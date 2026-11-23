@@ -43,50 +43,73 @@ public:
     }
 
     static inline float Torque(float x) noexcept {
-        const float w = kAcetanilideTorque.omega;
-        const float a1 = kAcetanilideTorque.a1;
-        const float a2 = kAcetanilideTorque.a2;
-        const float a3 = kAcetanilideTorque.a3;
-        const float a4 = kAcetanilideTorque.a4;
-        return a1 * std::sin(w * x) + a2 * std::sin(2.0f * w * x)
-             + a3 * std::sin(3.0f * w * x) + a4 * std::sin(4.0f * w * x);
+        return static_cast<float>(TorqueD(static_cast<double>(x)));
     }
 
 private:
-    static inline float F1(float x) noexcept {
-        const float w = kAcetanilideTorque.omega;
-        const float a1 = kAcetanilideTorque.a1;
-        const float a2 = kAcetanilideTorque.a2;
-        const float a3 = kAcetanilideTorque.a3;
-        const float a4 = kAcetanilideTorque.a4;
-        return -a1 * std::cos(w * x) / w
-             - a2 * std::cos(2.0f * w * x) / (2.0f * w)
-             - a3 * std::cos(3.0f * w * x) / (3.0f * w)
-             - a4 * std::cos(4.0f * w * x) / (4.0f * w);
+    // Cosine series is ~0.5 at the origin. Scale so a quiet vocal is not dropped 6 dB.
+    static inline double Unity() noexcept {
+        const double w = kAcetanilideTorque.omega;
+        const double a1 = kAcetanilideTorque.a1;
+        const double a2 = kAcetanilideTorque.a2;
+        const double a3 = kAcetanilideTorque.a3;
+        const double a4 = kAcetanilideTorque.a4;
+        const double slope = w * (a1 + 2.0 * a2 + 3.0 * a3 + 4.0 * a4);
+        return (std::fabs(slope) > 1.0e-6) ? (1.0 / slope) : 1.0;
     }
 
-    static inline float F2(float x) noexcept {
-        const float w = kAcetanilideTorque.omega;
-        const float a1 = kAcetanilideTorque.a1;
-        const float a2 = kAcetanilideTorque.a2;
-        const float a3 = kAcetanilideTorque.a3;
-        const float a4 = kAcetanilideTorque.a4;
-        const float w2 = w * w;
-        return -a1 * std::sin(w * x) / w2
-             - a2 * std::sin(2.0f * w * x) / (4.0f * w2)
-             - a3 * std::sin(3.0f * w * x) / (9.0f * w2)
-             - a4 * std::sin(4.0f * w * x) / (16.0f * w2);
+    static inline double TorqueD(double x) noexcept {
+        const double w = kAcetanilideTorque.omega;
+        const double a1 = kAcetanilideTorque.a1;
+        const double a2 = kAcetanilideTorque.a2;
+        const double a3 = kAcetanilideTorque.a3;
+        const double a4 = kAcetanilideTorque.a4;
+        const double y = a1 * std::sin(w * x) + a2 * std::sin(2.0 * w * x)
+                       + a3 * std::sin(3.0 * w * x) + a4 * std::sin(4.0 * w * x);
+        return y * Unity();
     }
 
+    static inline double F1(double x) noexcept {
+        const double w = kAcetanilideTorque.omega;
+        const double a1 = kAcetanilideTorque.a1;
+        const double a2 = kAcetanilideTorque.a2;
+        const double a3 = kAcetanilideTorque.a3;
+        const double a4 = kAcetanilideTorque.a4;
+        const double y = -a1 * std::cos(w * x) / w
+                       - a2 * std::cos(2.0 * w * x) / (2.0 * w)
+                       - a3 * std::cos(3.0 * w * x) / (3.0 * w)
+                       - a4 * std::cos(4.0 * w * x) / (4.0 * w);
+        return y * Unity();
+    }
+
+    static inline double F2(double x) noexcept {
+        const double w = kAcetanilideTorque.omega;
+        const double a1 = kAcetanilideTorque.a1;
+        const double a2 = kAcetanilideTorque.a2;
+        const double a3 = kAcetanilideTorque.a3;
+        const double a4 = kAcetanilideTorque.a4;
+        const double w2 = w * w;
+        const double y = -a1 * std::sin(w * x) / w2
+                       - a2 * std::sin(2.0 * w * x) / (4.0 * w2)
+                       - a3 * std::sin(3.0 * w * x) / (9.0 * w2)
+                       - a4 * std::sin(4.0 * w * x) / (16.0 * w2);
+        return y * Unity();
+    }
+
+    // Double difference: float32 ADAA2 cancels at a sine peak and spikes past full scale.
     static inline float Adaa2(float x0, float x1) noexcept {
-        const float dx = x1 - x0;
-        if (std::fabs(dx) < 1.0e-4f) {
-            const float mid = 0.5f * (x0 + x1);
-            return Torque(mid);
+        const double dx = static_cast<double>(x1) - static_cast<double>(x0);
+        double y;
+        if (std::fabs(dx) < 1.0e-4) {
+            y = TorqueD(0.5 * (static_cast<double>(x0) + static_cast<double>(x1)));
+        } else {
+            y = (2.0 / (dx * dx)) * (F2(x1) - F2(x0) - F1(x0) * dx);
         }
-        const float y = (2.0f / (dx * dx)) * (F2(x1) - F2(x0) - F1(x0) * dx);
-        if ((BitCast(y) & 0x7F800000u) == 0x7F800000u) return Torque(x1);
-        return std::clamp(y, -1.5f, 1.5f);
+        const float yf = static_cast<float>(y);
+        if ((BitCast(yf) & 0x7F800000u) == 0x7F800000u) {
+            return std::clamp(Torque(x1), -1.0f, 1.0f);
+        }
+        return std::clamp(yf, -1.0f, 1.0f);
     }
 
     static inline uint32_t BitCast(float x) noexcept {

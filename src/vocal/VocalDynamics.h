@@ -7,6 +7,7 @@
 //   2. OptoLa2aT4bStage : Teletronix LA-2A T4B coupled dual-memory CdS photoresistor ODE.
 
 #include "vocal/La2aCalibration.h"
+#include "vocal/La2aGrayBoxWeights.h"
 #include "vocal/Oversampler.h"
 
 #include <algorithm>
@@ -123,6 +124,7 @@ public:
         m_atkCoeff     = 1.0f - std::exp(-1.0f / (std::max(0.5f, c.tauAtkMs) * 0.001f * m_fs));
         m_chargeCoeff  = 1.0f - std::exp(-1.0f / (std::max(5.0f, c.tauChargeMs) * 0.001f * m_fs));
         m_dtMs         = 1000.0f / m_fs;
+        m_gray.Prepare(m_fs);
         Reset();
     }
 
@@ -131,6 +133,7 @@ public:
         m_gSlow      = 0.0f;
         m_gainSmooth = 1.0f;
         m_lastGrDb   = 0.0f;
+        m_gray.Reset();
     }
 
     // Processes mono buffer in-place when amount > 0.01f; returns minimum gain reduction (<= 0 dB).
@@ -180,7 +183,8 @@ public:
 
             const float gainLin = std::pow(10.0f, -m_gFast * 0.05f);
             m_gainSmooth = gainLin;
-            buf[i] = x * gainLin;
+            const float gained = x * gainLin;
+            buf[i] = gained + 0.04f * m_gray.Process(gained);
             if (outGainTrace) outGainTrace[i] = gainLin;
             minGain = std::min(minGain, gainLin);
         }
@@ -201,6 +205,7 @@ private:
     float m_gSlow       = 0.0f;
     float m_gainSmooth  = 1.0f;
     float m_lastGrDb    = 0.0f;
+    La2aGrayBoxResidual m_gray;
 };
 
 } // namespace stoneridge::vocal

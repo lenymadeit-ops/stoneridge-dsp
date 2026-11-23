@@ -6,7 +6,7 @@
   <title>Mackie EM-91CU+ - Stoneridge ASIO</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
-<body>
+<body data-page="track">
   <div class="ambient-glow"></div>
 
   <main class="shell">
@@ -60,10 +60,16 @@
       </div>
     </section>
 
+    <nav class="tab-bar" id="tabBar">
+      <button type="button" data-tab="track" class="active">Studio Track</button>
+      <button type="button" data-tab="chain">Analog Chain</button>
+      <button type="button" data-tab="engine">Engine and Lab</button>
+    </nav>
+
     <!-- Main Bento Grid -->
     <div class="bento-grid">
       <!-- Input Stage & Hardware Codec Card -->
-      <section class="glass-card card">
+      <section class="glass-card card tab-track">
         <div class="card-header">
           <div>
             <h2>Input &amp; Hardware Preamp</h2>
@@ -205,7 +211,7 @@
       </section>
 
       <!-- Noise Gate Card -->
-      <section class="glass-card card">
+      <section class="glass-card card tab-track">
         <div class="card-header">
           <div>
             <h2>Noise Gate</h2>
@@ -297,7 +303,7 @@
       </section>
 
       <!-- Studio Microphone Capture Chain Card -->
-      <section class="glass-card card span-2">
+      <section class="glass-card card span-2 tab-chain">
         <div class="card-header">
           <div>
             <h2>Studio Capsule Capture Processing</h2>
@@ -408,10 +414,16 @@
       </section>
 
       <!-- Phase 3: Legendary Preamps (Jiles-Atherton Iron) & Circuit Console EQs Card -->
-      <section class="glass-card card span-2">
+      <section class="glass-card card span-2 tab-chain">
         <div class="card-header">
           <div>
             <h2>Legendary Preamps &amp; Console EQ Strip</h2>
+            <div class="chain-extra">
+              <label>Beauty <input type="range" id="beautyAmount" min="0" max="1" step="0.01" value="0"></label>
+              <button type="button" id="voiceRecBtn">Loop Rec</button>
+              <button type="button" id="voicePlayBtn">Loop Play</button>
+              <button type="button" id="voiceStopBtn">Loop Stop</button>
+            </div>
             <p class="card-sub">4x oversampled Jiles-Atherton ferromagnetic iron &amp; circuit-derived passive/inductor EQs</p>
           </div>
           <div class="telemetry-chips">
@@ -515,10 +527,14 @@
       </section>
 
       <!-- Engine & Latency Card -->
-      <section class="glass-card card span-2">
+      <section class="glass-card card span-2 tab-engine">
         <div class="card-header">
           <div>
             <h2>ASIO Engine, Clocking &amp; Converters</h2>
+            <div class="engine-extra">
+              <label><input type="checkbox" id="ecoToggle"> ECO</label>
+              <span class="pill-tag" id="streamPill">Stream idle</span>
+            </div>
             <p class="card-sub">96 / 192 smp @ 48 kHz lock exact 1.000 ms USB SOF frames</p>
           </div>
           <div class="telemetry-chips">

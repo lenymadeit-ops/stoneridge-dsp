@@ -1,7 +1,9 @@
 #pragma once
 
 #include "dsp/Em91cuCalibration.h"
+#include "vocal/Adaa2MolecularShaper.h"
 #include "vocal/LoudnessMatcher.h"
+#include "vocal/PsychoacousticBeauty.h"
 #include "vocal/MicLocker.h"
 #include "vocal/PreampAndConsole.h"
 #include "vocal/VocalDynamics.h"
@@ -50,6 +52,13 @@ struct InputDspParams {
     bool  abLevelMatchedBypass     = false; // ITU-R BS.1770 K-weighted level-matched raw A/B
     bool  abAuditionMonitorOnly    = false; // product default is true via SharedState
     bool  freezeAbxGain            = false;
+    bool  molecularClip            = false;
+    bool  wdfEqEnabled             = false;
+    float beautyAmount             = 0.0f;
+    float contourAmt               = 1.0f;
+    float harmonicSculptAmt        = 1.0f;
+    float deHarshAmt               = 1.0f;
+    float parallelGlueAmt          = 0.15f;
     bool  ultrasonicLpfEnabled     = true;  // Auto 22 kHz 4th-order LPF at >=88.2 kHz
 };
 
@@ -209,6 +218,8 @@ private:
     float       m_cachedCalibStrength = -1.0f;
     AdaaClipper m_clipper;
     vocal::LoudnessMatcher   m_loudnessMatcher;
+    vocal::Adaa2MolecularShaper m_molecular;
+    vocal::PsychoacousticBeauty m_beauty;
     vocal::MicLockerStage    m_micLocker;
     vocal::PreampStage       m_preampStage;
     vocal::Fet1176Stage      m_fet1176;

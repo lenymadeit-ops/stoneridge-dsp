@@ -239,6 +239,8 @@ void InputProcessor::Prepare(double sampleRate, uint32_t /*maxChannels*/) noexce
         b.lastParam = -999.0f;
     }
     m_loudnessMatcher.Prepare(m_sampleRate);
+    m_molecular.Prepare(m_sampleRate);
+    m_beauty.Prepare(m_sampleRate);
     m_micLocker.Prepare(m_sampleRate);
     m_preampStage.Prepare(m_sampleRate);
     m_fet1176.Prepare(m_sampleRate);
@@ -280,6 +282,8 @@ void InputProcessor::Reset() noexcept {
     for (auto& b : m_calibBiquads) b.Reset();
     m_clipper.Reset();
     m_loudnessMatcher.Reset();
+    m_molecular.Reset();
+    m_beauty.Reset();
     m_micLocker.Reset();
     m_preampStage.Reset();
     m_fet1176.Reset();
@@ -682,7 +686,7 @@ void InputProcessor::ProcessStereo(float* left, float* right, uint32_t numFrames
         }
 
         // 8C. Circuit-Derived Console EQ (Pultec EQP-1A / Neve 1073 / SSL 4000G / API 550A)
-        m_consoleEq.ProcessBlock(cL, chunk, params.consoleEqModel, params.consoleLowDb, params.consoleMidDb, params.consoleAirDb);
+        m_consoleEq.ProcessBlock(cL, chunk, params.consoleEqModel, params.consoleLowDb, params.consoleMidDb, params.consoleAirDb, params.wdfEqEnabled);
 
         // 9. ADAA1 Soft-Clipper + 10. K-Weighted A/B Loudness Matcher + Metering
         for (uint32_t i = 0; i < chunk; ++i) {
@@ -691,6 +695,21 @@ void InputProcessor::ProcessStereo(float* left, float* right, uint32_t numFrames
             if (clipOn) {
                 l = m_clipper.Process(l, 0);
                 if (runCh1) r = m_clipper.Process(r, 1);
+                if (params.molecularClip) {
+                    l = m_molecular.Process(l);
+                    if (runCh1) r = m_molecular.Process(r);
+                }
+            }
+            if (params.beautyAmount > 0.001f) {
+                vocal::BeautyParams bp;
+                bp.beautyAmount = params.beautyAmount;
+                bp.contourAmt = params.contourAmt;
+                bp.harmonicSculptAmt = params.harmonicSculptAmt;
+                bp.deHarshAmt = params.deHarshAmt;
+                bp.parallelGlueAmt = params.parallelGlueAmt;
+                bp.shortTermLufs = -18.0f;
+                l = m_beauty.Process(l, bp);
+                if (runCh1) r = m_beauty.Process(r, bp);
             }
 
             const float rawB = m_rawScratch[i];

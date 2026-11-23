@@ -401,6 +401,24 @@ document.querySelectorAll("#rateSelector button").forEach((btn) => {
 });
 
 let activePreset = "";
+document.querySelectorAll("#tabBar button").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.body.dataset.page = btn.dataset.tab;
+    document.querySelectorAll("#tabBar button").forEach((b) => b.classList.toggle("active", b === btn));
+  });
+});
+const beauty = el("beautyAmount");
+if (beauty) beauty.addEventListener("input", () => postParam("beautyAmount", Number(beauty.value)));
+const eco = el("ecoToggle");
+if (eco) eco.addEventListener("change", () => postParam("ecoMode", eco.checked));
+const voice = (id, state) => {
+  const node = el(id);
+  if (node) node.addEventListener("click", () => postParam("voiceLoopState", state));
+};
+voice("voiceRecBtn", 1);
+voice("voicePlayBtn", 2);
+voice("voiceStopBtn", 0);
+
 document.querySelectorAll("#presetPills button").forEach((btn) => {
   btn.addEventListener("click", () => {
     const name = btn.dataset.preset;
@@ -591,8 +609,10 @@ function applyStateMessage(msg) {
   // Live Telemetry
   el("deviceDot").classList.toggle("connected", telemetry.deviceConnected);
   const micTag = telemetry.captureActive ? " | Mic Active" : "";
+  const stream = el("streamPill");
+  if (stream) stream.textContent = telemetry.streamRunning ? "Stream running" : "Stream idle";
   el("deviceStatusText").textContent = telemetry.deviceConnected
-    ? `${telemetry.deviceName || "Mackie EM-91CU+"}${micTag}`
+    ? `${telemetry.deviceName || "Mackie EM-91CU+"}${micTag}${telemetry.streamRunning ? "" : " | Open FL Studio to arm"}`
     : "Waiting for Mackie EM-91CU+";
   el("engineSubtitle").textContent = (telemetry.activeEngineMode === 0)
     ? "WDM-KS Direct Kernel Streaming | MMCSS Pro Audio | Zero audiodg"

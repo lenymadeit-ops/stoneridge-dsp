@@ -13,6 +13,8 @@
 //                                 Network, Neve 1073 Inductor, SSL 4000G, API 550A Proportional-Q).
 
 #include "vocal/Oversampler.h"
+#include "vocal/TubeAndRailPhysics.h"
+#include "vocal/WdfPultecEq.h"
 
 #include <algorithm>
 #include <cmath>
@@ -175,6 +177,7 @@ public:
         m_fs = (sampleRate > 1000.0) ? sampleRate : 48000.0;
         m_os.Prepare(4u);
         m_ja.Prepare(m_fs, 4u);
+        m_rail.Prepare(m_fs);
         m_cachedModel = 999u;
         UpdateModelBiquads(static_cast<uint32_t>(PreampModel::BypassClean));
         Reset();
@@ -183,6 +186,7 @@ public:
     void Reset() noexcept {
         m_os.Reset();
         m_ja.Reset();
+        m_rail.Reset();
         m_dcZ1 = 0.0f;
         m_dcPrevIn = 0.0f;
         m_toneBiquad.Reset();
@@ -257,6 +261,10 @@ public:
             m_os.Downsample(buf + offset, chunk);
             offset += chunk;
         }
+        for (uint32_t i = 0; i < numFrames; ++i) {
+            const float draw = std::min(1.0f, std::fabs(buf[i]) * 1.5f);
+            buf[i] *= m_rail.Process(draw);
+        }
     }
 
 private:
@@ -320,6 +328,7 @@ private:
     float m_dcZ1         = 0.0f;
     float m_dcPrevIn     = 0.0f;
     Oversampler m_os;
+    PowerSupplyRail m_rail;
     JilesAthertonTransformer m_ja;
     SimpleBiquad m_toneBiquad;
 };
@@ -331,6 +340,8 @@ public:
         m_fs = (sampleRate > 1000.0) ? sampleRate : 48000.0;
         m_cachedModel = 999u;
         m_cachedLow = m_cachedMid = m_cachedAir = -999.0f;
+        m_wdf.Prepare(m_fs);
+        m_zdf.Prepare(m_fs);
         Reset();
     }
 
@@ -339,14 +350,29 @@ public:
         m_low2.Reset();
         m_mid.Reset();
         m_air.Reset();
+        m_wdf.Reset();
+        m_zdf.Reset();
     }
 
     void ProcessBlock(float* buf, uint32_t numFrames,
-                      uint32_t eqModel, float lowDb, float midDb, float airDb) noexcept {
+                      uint32_t eqModel, float lowDb, float midDb, float airDb,
+                      bool useWdf = false) noexcept {
         if (!buf || numFrames == 0 || eqModel == static_cast<uint32_t>(ConsoleEqModel::Bypass)) {
             return;
         }
         if (std::fabs(lowDb) < 0.02f && std::fabs(midDb) < 0.02f && std::fabs(airDb) < 0.02f) {
+            return;
+        }
+
+        if (useWdf && eqModel == static_cast<uint32_t>(ConsoleEqModel::PultecEqp1a)) {
+            const float boost = std::max(0.0f, lowDb);
+            const float cut = std::min(0.0f, -0.45f * std::max(lowDb, 0.0f));
+            for (uint32_t i = 0; i < numFrames; ++i) {
+                float y = m_wdf.ProcessLow(buf[i], boost, cut);
+                y = m_wdf.ProcessBell(y, airDb);
+                if (std::fabs(midDb) > 0.02f) y = m_zdf.ProcessBell(y, 3200.0f, 0.8f, midDb);
+                buf[i] = y;
+            }
             return;
         }
 
@@ -456,6 +482,8 @@ private:
     uint32_t m_cachedModel = 999u;
     float m_cachedLow = -999.0f, m_cachedMid = -999.0f, m_cachedAir = -999.0f;
     Sec m_low1, m_low2, m_mid, m_air;
+    WdfPultecEq m_wdf;
+    ZdfTptFilter m_zdf;
 };
 
 } // namespace stoneridge::vocal

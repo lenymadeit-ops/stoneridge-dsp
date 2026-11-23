@@ -1,27 +1,46 @@
-// Stoneridge Vocal Chain plugin face. The DSP lives in the shared vocal headers.
+// Stoneridge Vocal Chain. The same InputProcessor the ASIO driver prints.
 #define SONORE_NUM_PARAMS 8
+
+#include "dsp/InputProcessor.h"
 
 #include <sonore/dsp.h>
 
 struct SonoreDsp {
-    void prepare(const sonore::ProcessSpec& spec) { sampleRate = spec.sampleRate; }
-    void process(sonore::AudioBlock<float>& block, const float* params) {
+    void prepare(const sonore::ProcessSpec& spec) {
+        sampleRate = spec.sampleRate > 1000.0 ? spec.sampleRate : 48000.0;
+        chain.Prepare(sampleRate, 2);
+    }
+
+    void process(sonore::AudioBlock<float>& block, const float* p) {
         const int channels = static_cast<int>(block.getNumChannels());
         const int frames = static_cast<int>(block.getNumSamples());
-        const float drive = params ? params[0] : 0.0f;
-        const float trim = params ? params[1] : 0.0f;
-        const float gain = std::pow(10.0f, (trim + drive * 6.0f) / 20.0f);
-        for (int c = 0; c < channels; ++c) {
-            float* data = block.getChannelPointer(static_cast<size_t>(c));
-            if (!data) continue;
-            for (int i = 0; i < frames; ++i) {
-                const float x = data[i] * gain;
-                data[i] = x / (1.0f + 0.15f * drive * std::fabs(x));
-            }
-        }
-        (void) sampleRate;
+        if (frames <= 0 || channels <= 0) return;
+        float* left = block.getChannelPointer(0);
+        if (!left) return;
+        float* right = channels > 1 ? block.getChannelPointer(1) : nullptr;
+
+        stoneridge::InputDspParams params{};
+        params.softClipEnabled = true;
+        params.molecularClip = true;
+        params.wdfEqEnabled = true;
+        params.gainDb = p ? p[1] : 0.0f;
+        params.preampDriveDb = p ? p[0] * 12.0f : 0.0f;
+        params.preampModel = (params.preampDriveDb > 0.05f) ? 1u : 0u;
+        params.fetPeakCatchAmount = p ? p[2] : 0.0f;
+        params.fetRatioMode = p ? static_cast<uint32_t>(p[3]) : 0u;
+        params.vocalLevelerAmount = p ? p[4] : 0.0f;
+        params.beautyAmount = p ? p[5] : 0.0f;
+        params.consoleLowDb = p ? p[6] : 0.0f;
+        params.consoleAirDb = p ? p[7] : 0.0f;
+        params.consoleEqModel = (std::fabs(params.consoleLowDb) > 0.05f || std::fabs(params.consoleAirDb) > 0.05f) ? 1u : 0u;
+
+        stoneridge::InputDspTelemetry tel{};
+        if (right) chain.ProcessStereo(left, right, static_cast<uint32_t>(frames), params, tel);
+        else chain.ProcessMono(left, static_cast<uint32_t>(frames), params, tel);
     }
+
     double sampleRate = 48000.0;
+    stoneridge::InputProcessor chain;
 };
 
 #include <sonore/plugin.h>
@@ -29,7 +48,7 @@ struct SonoreDsp {
 static const char* kRatioNames[] = { "4:1", "8:1", "British" };
 
 static const sonore::ParamInfo kParams[SONORE_NUM_PARAMS] = {
-    { "input", "Input", "dB", 0.0f, 1.0f, 0.2f, 0, "Input" },
+    { "input", "Input", "dB", 0.0f, 1.0f, 0.0f, 0, "Input" },
     { "trim", "Trim", "dB", -12.0f, 12.0f, 0.0f, 0, "Input" },
     { "fet", "1176", "%", 0.0f, 1.0f, 0.0f, 0, "Dynamics" },
     { "ratio", "Ratio", "", 0.0f, 2.0f, 0.0f, 3, "Dynamics", kRatioNames, 3 },

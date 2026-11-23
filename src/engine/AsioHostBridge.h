@@ -90,6 +90,13 @@ inline AsioDispatchResult ProcessAsioHostBlock(SharedState* sharedState,
         dspParams.abLevelMatchedBypass     = sharedState->abLevelMatchedBypass.load(std::memory_order_relaxed);
         dspParams.abAuditionMonitorOnly    = sharedState->abAuditionMonitorOnly.load(std::memory_order_relaxed);
         dspParams.freezeAbxGain            = sharedState->freezeAbxGain.load(std::memory_order_relaxed);
+        dspParams.molecularClip            = sharedState->molecularClip.load(std::memory_order_relaxed);
+        dspParams.wdfEqEnabled             = sharedState->wdfEqEnabled.load(std::memory_order_relaxed);
+        dspParams.beautyAmount             = sharedState->beautyAmount.load(std::memory_order_relaxed);
+        dspParams.contourAmt               = sharedState->contourAmt.load(std::memory_order_relaxed);
+        dspParams.harmonicSculptAmt        = sharedState->harmonicSculptAmt.load(std::memory_order_relaxed);
+        dspParams.deHarshAmt               = sharedState->deHarshAmt.load(std::memory_order_relaxed);
+        dspParams.parallelGlueAmt          = sharedState->parallelGlueAmt.load(std::memory_order_relaxed);
         dspParams.ultrasonicLpfEnabled     = sharedState->ultrasonicLpfEnabled.load(std::memory_order_relaxed);
 
         crParams.directMonitorMix    = std::clamp(sharedState->directMonitorMix.load(std::memory_order_relaxed), 0.0f, 1.0f);

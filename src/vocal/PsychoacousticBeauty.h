@@ -81,7 +81,7 @@ public:
 
         const float lowLift = 1.0f + 0.12f * contour;
         y = y + (m_chest * (lowLift - 1.0f));
-        return x + (y - x) * g;
+        return std::clamp(x + (y - x) * g, -1.0f, 1.0f);
     }
 
 private:

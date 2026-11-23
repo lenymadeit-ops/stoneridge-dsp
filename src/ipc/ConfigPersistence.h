@@ -88,6 +88,8 @@ inline void LoadConfigToSharedState(SharedState* state) {
         if (j.contains("abAuditionMonitorOnly")) state->abAuditionMonitorOnly.store(j["abAuditionMonitorOnly"].get<bool>(), std::memory_order_relaxed);
         if (j.contains("ecoMode"))              state->ecoMode.store(j["ecoMode"].get<bool>(), std::memory_order_relaxed);
         if (j.contains("beautyAmount"))         state->beautyAmount.store(j["beautyAmount"].get<float>(), std::memory_order_relaxed);
+        if (j.contains("wdfEqEnabled"))         state->wdfEqEnabled.store(j["wdfEqEnabled"].get<bool>(), std::memory_order_relaxed);
+        if (j.contains("molecularClip"))        state->molecularClip.store(j["molecularClip"].get<bool>(), std::memory_order_relaxed);
         if (j.contains("voiceLoopState"))       state->voiceLoopState.store(j["voiceLoopState"].get<uint32_t>(), std::memory_order_relaxed);
     } catch (...) {
     }
@@ -153,6 +155,8 @@ inline void SaveSharedStateToConfig(const SharedState* state) {
         { "abAuditionMonitorOnly", state->abAuditionMonitorOnly.load(std::memory_order_relaxed) },
         { "ecoMode",              state->ecoMode.load(std::memory_order_relaxed) },
         { "beautyAmount",         state->beautyAmount.load(std::memory_order_relaxed) },
+        { "wdfEqEnabled",         state->wdfEqEnabled.load(std::memory_order_relaxed) },
+        { "molecularClip",        state->molecularClip.load(std::memory_order_relaxed) },
         { "voiceLoopState",       state->voiceLoopState.load(std::memory_order_relaxed) }
     };
     std::ofstream ofs(GetConfigFilePath());

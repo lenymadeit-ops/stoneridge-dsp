@@ -89,6 +89,7 @@ struct alignas(64) SharedState {
     std::atomic<bool>  ecoMode;
     std::atomic<bool>  freezeAbxGain;
     std::atomic<bool>  wdfEqEnabled;
+    std::atomic<bool>  molecularClip;
     std::atomic<float> beautyAmount;
     std::atomic<float> contourAmt;
     std::atomic<float> harmonicSculptAmt;
@@ -235,7 +236,8 @@ inline void InitializeDefaultSharedState(SharedState& state) {
     state.abAuditionMonitorOnly.store(true, std::memory_order_relaxed);
     state.ecoMode.store(false, std::memory_order_relaxed);
     state.freezeAbxGain.store(false, std::memory_order_relaxed);
-    state.wdfEqEnabled.store(false, std::memory_order_relaxed);
+    state.wdfEqEnabled.store(true, std::memory_order_relaxed);
+    state.molecularClip.store(true, std::memory_order_relaxed);
     state.beautyAmount.store(0.0f, std::memory_order_relaxed);
     state.contourAmt.store(1.0f, std::memory_order_relaxed);
     state.harmonicSculptAmt.store(1.0f, std::memory_order_relaxed);

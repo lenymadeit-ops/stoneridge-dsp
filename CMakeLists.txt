@@ -209,4 +209,10 @@ if(STONERIDGE_BUILD_PLUGIN AND EXISTS "${STONERIDGE_SONORE_SDK}/CMakeLists.txt")
         CLAP StoneridgeVocalChain_clap
         UI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/plugin/ui"
     )
+    if(TARGET StoneridgeVocalChain_objects)
+        target_include_directories(StoneridgeVocalChain_objects PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+        target_link_libraries(StoneridgeVocalChain_objects PRIVATE StoneridgeCore)
+        add_custom_command(TARGET StoneridgeVocalChain_vst3 POST_BUILD
+            COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File "${CMAKE_SOURCE_DIR}/scripts/install_vst3.ps1" -Configuration $<CONFIG>)
+    endif()
 endif()

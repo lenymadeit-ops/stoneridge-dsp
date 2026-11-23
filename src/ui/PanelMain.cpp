@@ -155,7 +155,13 @@ void PushTelemetryToWebView() {
             { "requestedSampleRate",  g_state->requestedSampleRate.load(std::memory_order_relaxed) },
             { "pCorePriority",        g_state->pCorePriority.load(std::memory_order_relaxed) },
             { "adaptiveXRunGuard",    g_state->adaptiveXRunGuard.load(std::memory_order_relaxed) },
-            { "themeMode",            g_state->themeMode.load(std::memory_order_relaxed) }
+            { "themeMode",            g_state->themeMode.load(std::memory_order_relaxed) },
+            { "ecoMode",              g_state->ecoMode.load(std::memory_order_relaxed) },
+            { "beautyAmount",         g_state->beautyAmount.load(std::memory_order_relaxed) },
+            { "voiceLoopState",       g_state->voiceLoopState.load(std::memory_order_relaxed) },
+            { "abAuditionMonitorOnly", g_state->abAuditionMonitorOnly.load(std::memory_order_relaxed) },
+            { "wdfEqEnabled",         g_state->wdfEqEnabled.load(std::memory_order_relaxed) },
+            { "molecularClip",        g_state->molecularClip.load(std::memory_order_relaxed) }
         }},
         { "telemetry", {
             { "deviceConnected",          g_state->deviceConnected.load(std::memory_order_relaxed) },
@@ -304,6 +310,10 @@ void HandleWebMessage(const std::wstring& jsonStr) {
                 g_state->abAuditionMonitorOnly.store(val.get<bool>(), std::memory_order_relaxed);
             } else if (key == "freezeAbxGain") {
                 g_state->freezeAbxGain.store(val.get<bool>(), std::memory_order_relaxed);
+            } else if (key == "wdfEqEnabled") {
+                g_state->wdfEqEnabled.store(val.get<bool>(), std::memory_order_relaxed);
+            } else if (key == "molecularClip") {
+                g_state->molecularClip.store(val.get<bool>(), std::memory_order_relaxed);
             }
             g_forceTelemetry = true;
             stoneridge::SaveSharedStateToConfig(g_state);

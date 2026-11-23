@@ -1,3 +1,4 @@
+#include "dsp/InputProcessor.h"
 #include "vocal/Adaa2MolecularShaper.h"
 #include "vocal/La2aGrayBoxWeights.h"
 #include "vocal/PsychoacousticBeauty.h"
@@ -91,6 +92,40 @@ TEST_CASE("v7 beauty is transparent at zero and adds even energy when driven", "
         energy += static_cast<double>(y - x) * (y - x);
     }
     REQUIRE(energy > 1.0e-6);
+}
+
+TEST_CASE("v7 acoustic audit stays finite across 44.1, 48, and 96 kHz", "[v7][audit]") {
+    for (double rate : { 44100.0, 48000.0, 96000.0 }) {
+        stoneridge::InputProcessor proc;
+        proc.Prepare(rate, 2);
+        stoneridge::InputDspParams params{};
+        params.gainDb = 6.0f;
+        params.softClipEnabled = true;
+        params.molecularClip = true;
+        params.wdfEqEnabled = true;
+        params.consoleEqModel = 1u;
+        params.consoleLowDb = 3.0f;
+        params.beautyAmount = 0.4f;
+        params.fetPeakCatchAmount = 0.3f;
+        params.vocalLevelerAmount = 0.3f;
+        params.preampModel = 1u;
+        params.preampDriveDb = 4.0f;
+        const uint32_t n = static_cast<uint32_t>(rate * 0.25);
+        std::vector<float> l(n), r(n);
+        double sum = 0.0;
+        float peak = 0.0f;
+        for (uint32_t i = 0; i < n; ++i) {
+            l[i] = r[i] = 0.2f * std::sin(2.0f * 3.14159265f * 220.0f * i / static_cast<float>(rate));
+        }
+        stoneridge::InputDspTelemetry tel{};
+        proc.ProcessStereo(l.data(), r.data(), n, params, tel);
+        for (float s : l) {
+            peak = std::max(peak, std::fabs(s));
+            sum += static_cast<double>(s);
+        }
+        REQUIRE(peak < 1.05f);
+        REQUIRE(std::fabs(sum / n) < 0.02);
+    }
 }
 
 TEST_CASE("v7 voice loop records and plays without growing", "[v7][loop]") {

@@ -131,6 +131,19 @@ public:
             m_os.Downsample(buf + offset, chunk);
             offset += chunk;
         }
+        const float dt = 1.0f / static_cast<float>(m_fs);
+        for (uint32_t i = 0; i < numFrames; ++i) {
+            const float x = std::clamp(buf[i], -0.95f, 0.95f);
+            const float gap = std::max(0.08f, 1.0f - std::fabs(x));
+            const float gamma = 40.0f / (gap * gap * gap);
+            const float damp = std::exp(-gamma * dt * 0.5f);
+            m_memV *= damp;
+            m_memX += m_memV * dt * 0.5f;
+            m_memV += (-1800.0f * m_memX + x * 80.0f) * dt;
+            m_memX += m_memV * dt * 0.5f;
+            m_memV *= damp;
+            buf[i] += 0.012f * m_memX;
+        }
     }
 
 private:
@@ -211,6 +224,8 @@ private:
 
     std::array<Sec, kMicEqSections> m_eq{};
     Oversampler m_os;
+    float m_memX = 0.0f;
+    float m_memV = 0.0f;
 };
 
 } // namespace stoneridge::vocal
