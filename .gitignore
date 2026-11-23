@@ -1,0 +1,32 @@
+# Build artifacts & IDE
+build/
+build-*/
+cmake-build-*/
+.ci-tools/
+.vs/
+*.obj
+*.exp
+*.lib
+*.pdb
+*.ilk
+*.exe
+*.dll
+*.user
+*.suo
+.DS_Store
+Thumbs.db
+
+# Python / Stoneridge Lab venv & scratch
+.venv/
+**/__pycache__/
+*.pyc
+tools/lab/scratch/
+.licenses/
+
+# Large audio / calibration / SignalTrain datasets
+*.wav
+*.m4a
+*.tgz
+data/signaltrain_subset/
+data/calibration/*.wav
+data/calibration/*.m4a

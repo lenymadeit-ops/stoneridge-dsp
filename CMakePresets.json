@@ -1,0 +1,55 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "release-x64",
+      "displayName": "Release x64 (Production AVX2)",
+      "generator": "Visual Studio 18 2026",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "STONERIDGE_ENABLE_ASAN": "OFF",
+        "STONERIDGE_ENABLE_ANALYZE": "OFF"
+      }
+    },
+    {
+      "name": "asan-x64",
+      "displayName": "AddressSanitizer x64 (Memory Safety Gate)",
+      "generator": "Visual Studio 18 2026",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build-asan",
+      "cacheVariables": {
+        "STONERIDGE_ENABLE_ASAN": "ON",
+        "STONERIDGE_ENABLE_ANALYZE": "OFF"
+      }
+    },
+    {
+      "name": "analyze-x64",
+      "displayName": "Static Analysis x64 (/analyze /WX Zero-Warning Gate)",
+      "generator": "Visual Studio 18 2026",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build-analyze",
+      "cacheVariables": {
+        "STONERIDGE_ENABLE_ASAN": "OFF",
+        "STONERIDGE_ENABLE_ANALYZE": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "release-x64",
+      "configurePreset": "release-x64",
+      "configuration": "Release"
+    },
+    {
+      "name": "asan-x64",
+      "configurePreset": "asan-x64",
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "analyze-x64",
+      "configurePreset": "analyze-x64",
+      "configuration": "Release"
+    }
+  ]
+}
