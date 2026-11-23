@@ -82,6 +82,13 @@ inline void LoadConfigToSharedState(SharedState* state) {
         if (j.contains("pCorePriority"))        state->pCorePriority.store(j["pCorePriority"].get<bool>(), std::memory_order_relaxed);
         if (j.contains("adaptiveXRunGuard"))    state->adaptiveXRunGuard.store(j["adaptiveXRunGuard"].get<bool>(), std::memory_order_relaxed);
         if (j.contains("themeMode"))            state->themeMode.store(j["themeMode"].get<uint32_t>(), std::memory_order_relaxed);
+        if (j.contains("hardwarePgaGainDb"))    state->hardwarePgaGainDb.store(j["hardwarePgaGainDb"].get<float>(), std::memory_order_relaxed);
+        if (j.contains("hardwareDacGainDb"))    state->hardwareDacGainDb.store(j["hardwareDacGainDb"].get<float>(), std::memory_order_relaxed);
+        if (j.contains("abLevelMatchedBypass")) state->abLevelMatchedBypass.store(j["abLevelMatchedBypass"].get<bool>(), std::memory_order_relaxed);
+        if (j.contains("abAuditionMonitorOnly")) state->abAuditionMonitorOnly.store(j["abAuditionMonitorOnly"].get<bool>(), std::memory_order_relaxed);
+        if (j.contains("ecoMode"))              state->ecoMode.store(j["ecoMode"].get<bool>(), std::memory_order_relaxed);
+        if (j.contains("beautyAmount"))         state->beautyAmount.store(j["beautyAmount"].get<float>(), std::memory_order_relaxed);
+        if (j.contains("voiceLoopState"))       state->voiceLoopState.store(j["voiceLoopState"].get<uint32_t>(), std::memory_order_relaxed);
     } catch (...) {
     }
 }
@@ -139,7 +146,14 @@ inline void SaveSharedStateToConfig(const SharedState* state) {
         { "requestedSampleRate",  state->requestedSampleRate.load(std::memory_order_relaxed) },
         { "pCorePriority",        state->pCorePriority.load(std::memory_order_relaxed) },
         { "adaptiveXRunGuard",    state->adaptiveXRunGuard.load(std::memory_order_relaxed) },
-        { "themeMode",            state->themeMode.load(std::memory_order_relaxed) }
+        { "themeMode",            state->themeMode.load(std::memory_order_relaxed) },
+        { "hardwarePgaGainDb",    state->hardwarePgaGainDb.load(std::memory_order_relaxed) },
+        { "hardwareDacGainDb",    state->hardwareDacGainDb.load(std::memory_order_relaxed) },
+        { "abLevelMatchedBypass", state->abLevelMatchedBypass.load(std::memory_order_relaxed) },
+        { "abAuditionMonitorOnly", state->abAuditionMonitorOnly.load(std::memory_order_relaxed) },
+        { "ecoMode",              state->ecoMode.load(std::memory_order_relaxed) },
+        { "beautyAmount",         state->beautyAmount.load(std::memory_order_relaxed) },
+        { "voiceLoopState",       state->voiceLoopState.load(std::memory_order_relaxed) }
     };
     std::ofstream ofs(GetConfigFilePath());
     if (ofs.is_open()) {

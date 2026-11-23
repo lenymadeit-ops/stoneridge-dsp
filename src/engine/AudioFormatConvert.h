@@ -50,8 +50,16 @@ inline void BlendDirectMonitorAvx2(const float* fl, const float* mic, float* dst
 }
 
 // Safe finite clamp (prevents NaN/Inf from plugins causing harsh digital rail pops)
+inline bool IsNonFiniteFloat(float x) noexcept {
+    uint32_t u = 0;
+    const auto* p = reinterpret_cast<const unsigned char*>(&x);
+    u = static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8)
+      | (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
+    return (u & 0x7F800000u) == 0x7F800000u;
+}
+
 inline float SafeClampSample(float x) noexcept {
-    if (!(x == x)) return 0.0f;
+    if (IsNonFiniteFloat(x)) return 0.0f;
     return std::clamp(x, -1.0f, 1.0f);
 }
 

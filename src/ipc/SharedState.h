@@ -10,9 +10,9 @@
 
 namespace stoneridge {
 
-inline constexpr wchar_t kSharedMemoryName[] = L"Local\\StoneridgeASIO_SharedState_v6";
+inline constexpr wchar_t kSharedMemoryName[] = L"Local\\StoneridgeASIO_SharedState_v7";
 inline constexpr uint32_t kSharedStateMagic   = 0x53524453; // 'SRDS'
-inline constexpr uint32_t kSharedStateVersion = 6;
+inline constexpr uint32_t kSharedStateVersion = 7;
 inline constexpr uint32_t kJitterHistorySize  = 64;
 
 enum class ThemeMode : uint32_t {
@@ -71,7 +71,7 @@ struct alignas(64) SharedState {
     std::atomic<float> deEsserAmount;                  // 0.0 to 1.0 (5.5-9 kHz dynamic sibilance control)
     std::atomic<bool>  plosiveGuardEnabled;            // Dynamic <140 Hz pop/plosive suppressor
     std::atomic<float> fetPeakCatchAmount;             // 0.0 to 1.0 (1176-style 80 us feedback FET peak catcher)
-    std::atomic<uint32_t> fetRatioMode;                // 0 = 4:1, 1 = 8:1
+    std::atomic<uint32_t> fetRatioMode;                // 0 = 4:1, 1 = 8:1, 2 = British 20:1
     std::atomic<float> vocalLevelerAmount;             // 0.0 to 1.0 (LA-2A T4B dual-memory opto leveler)
     std::atomic<uint32_t> micModel;                    // 0=Bypass, 1=C800G, 2=U87Ai, 3=251E, 4=U47, 5=SM7B
     std::atomic<float> virtualDistanceCm;              // 5.0 to 35.0 cm spherical-wave proximity (15=neutral)
@@ -85,6 +85,17 @@ struct alignas(64) SharedState {
     std::atomic<bool>  dualTrackSafetyMode;            // Legacy mirror of mic2RoutingMode == 2
     std::atomic<uint32_t> mic2RoutingMode;             // 0=Mirror, 1=Pre-Dynamics Stem, 2=Raw Safety
     std::atomic<bool>  abLevelMatchedBypass;           // K-weighted ITU-R BS.1770 level-matched raw A/B
+    std::atomic<bool>  abAuditionMonitorOnly;          // true: raw A/B is headphones only, the take stays processed
+    std::atomic<bool>  ecoMode;
+    std::atomic<bool>  freezeAbxGain;
+    std::atomic<bool>  wdfEqEnabled;
+    std::atomic<float> beautyAmount;
+    std::atomic<float> contourAmt;
+    std::atomic<float> harmonicSculptAmt;
+    std::atomic<float> deHarshAmt;
+    std::atomic<float> parallelGlueAmt;
+    std::atomic<float> backingHeadroomDb;
+    std::atomic<uint32_t> voiceLoopState;              // 0 idle, 1 record, 2 loop
     std::atomic<bool>  ultrasonicLpfEnabled;           // Auto 22 kHz LPF at >=88.2 kHz (strips 96k/16b sigma-delta noise)
 
     // Control-Room Headphone Matrix (Monitor-Only, never printed to DAW)
@@ -221,6 +232,17 @@ inline void InitializeDefaultSharedState(SharedState& state) {
     state.dualTrackSafetyMode.store(false, std::memory_order_relaxed);
     state.mic2RoutingMode.store(0u, std::memory_order_relaxed);
     state.abLevelMatchedBypass.store(false, std::memory_order_relaxed);
+    state.abAuditionMonitorOnly.store(true, std::memory_order_relaxed);
+    state.ecoMode.store(false, std::memory_order_relaxed);
+    state.freezeAbxGain.store(false, std::memory_order_relaxed);
+    state.wdfEqEnabled.store(false, std::memory_order_relaxed);
+    state.beautyAmount.store(0.0f, std::memory_order_relaxed);
+    state.contourAmt.store(1.0f, std::memory_order_relaxed);
+    state.harmonicSculptAmt.store(1.0f, std::memory_order_relaxed);
+    state.deHarshAmt.store(1.0f, std::memory_order_relaxed);
+    state.parallelGlueAmt.store(0.15f, std::memory_order_relaxed);
+    state.backingHeadroomDb.store(-3.0f, std::memory_order_relaxed);
+    state.voiceLoopState.store(0u, std::memory_order_relaxed);
     state.ultrasonicLpfEnabled.store(true, std::memory_order_relaxed);
 
     state.monitorReverbAmount.store(0.0f, std::memory_order_relaxed);

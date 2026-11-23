@@ -735,6 +735,9 @@ void WdmKsStream::AudioThreadMain() {
         DWORD rBytes = 0;
         if (!GetOverlappedResult(m_renderPin.get(), &rSlot.ov, &rBytes, FALSE)) {
             const DWORD err = GetLastError();
+            if (err == ERROR_IO_INCOMPLETE) {
+                continue;
+            }
             if (err == ERROR_DEVICE_NOT_CONNECTED || err == ERROR_OPERATION_ABORTED) {
                 if (m_callbacks && m_callbacks->asioMessage) {
                     m_callbacks->asioMessage(kAsioResetRequest, 0, nullptr, nullptr);
@@ -759,7 +762,11 @@ void WdmKsStream::AudioThreadMain() {
         if (m_capturePin && !m_captureIrps.empty()) {
             for (uint32_t checked = 0; checked < m_captureIrps.size(); ++checked) {
                 IrpSlot& cSlot = m_captureIrps[cIdx];
-                if (!cSlot.pending || WaitForSingleObject(cSlot.evt.get(), 0) != WAIT_OBJECT_0) {
+                if (!cSlot.pending) {
+                    cIdx = (cIdx + 1u) % static_cast<uint32_t>(m_captureIrps.size());
+                    continue;
+                }
+                if (WaitForSingleObject(cSlot.evt.get(), 0) != WAIT_OBJECT_0) {
                     break;
                 }
                 DWORD cBytes = 0;

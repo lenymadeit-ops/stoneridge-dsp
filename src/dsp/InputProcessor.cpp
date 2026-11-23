@@ -340,10 +340,11 @@ void InputProcessor::AccumulateLearnSample(float sample) noexcept {
     }
 }
 
-void InputProcessor::StartPreampAutoLevel(float currentHardwarePgaDb) noexcept {
+void InputProcessor::StartPreampAutoLevel(float currentHardwarePgaDb, bool hasHardwarePga) noexcept {
     m_preampTargetSamples = static_cast<uint32_t>(m_sampleRate * 3.0); // 3 seconds vocal window
     m_preampCount         = 0;
     m_preampStartPgaDb    = currentHardwarePgaDb;
+    m_hasHwPga            = hasHardwarePga;
     m_preampPeakLin       = 0.0f;
     m_preampResult        = {};
     m_preampCalibActive   = true;
@@ -363,10 +364,12 @@ void InputProcessor::AccumulatePreampSample(float sample) noexcept {
         const float deltaDb = -9.0f - peakDb;
         const float wantedPga = m_preampStartPgaDb + deltaDb;
         // Snap hardware PGA to [-63.5, 0.0] dB in exact 0.5 dB steps
-        const float hwPga = std::clamp(std::round(wantedPga * 2.0f) * 0.5f, -63.5f, 0.0f);
-        // Any remaining needed makeup goes to digital trim (conservatively capped at +12 dB)
-        const float leftover = (wantedPga > 0.0f && peakDb > -65.0f)
-            ? std::clamp(std::round(wantedPga * 2.0f) * 0.5f, 0.0f, 12.0f)
+        const float hwPga = m_hasHwPga
+            ? std::clamp(std::round(wantedPga * 2.0f) * 0.5f, -63.5f, 0.0f)
+            : m_preampStartPgaDb;
+        const float residual = wantedPga - hwPga;
+        const float leftover = (peakDb > -65.0f)
+            ? std::clamp(std::round(residual * 2.0f) * 0.5f, -24.0f, 12.0f)
             : 0.0f;
 
         m_preampResult.completed         = true;
@@ -474,7 +477,7 @@ void InputProcessor::ProcessStereo(float* left, float* right, uint32_t numFrames
     const bool dualSafe  = (routeMode == 2u) && (right != nullptr);
     const bool preDynStem = (routeMode == 1u) && (right != nullptr);
     const bool abBypass  = params.abLevelMatchedBypass;
-    const bool monoFast  = (right == nullptr) || (std::memcmp(left, right, numFrames * sizeof(float)) == 0);
+    const bool monoFast  = (right == nullptr);
     const bool runCh1    = !monoFast && !dualSafe && !preDynStem && (right != nullptr);
 
     const float tgtGain  = m_targetGainLin;
@@ -521,8 +524,9 @@ void InputProcessor::ProcessStereo(float* left, float* right, uint32_t numFrames
                 m_dcPrevX[1] = cR[i];
                 m_dcPrevY[1] = r;
             }
+            const float rawBackupL = l;
             const float rawBackupR = r;
-            m_rawScratch[i] = rawBackupR;
+            m_rawScratch[i] = rawBackupL;
 
             // 1. Optional Room-Noise / Preamp Auto-Level Calibration Samplers
             if (m_learnActive) {
@@ -690,12 +694,15 @@ void InputProcessor::ProcessStereo(float* left, float* right, uint32_t numFrames
             }
 
             const float rawB = m_rawScratch[i];
+            m_loudnessMatcher.SetGateOpen(m_gateOpen);
+            m_loudnessMatcher.SetFreeze(params.freezeAbxGain);
             const float abGain = m_loudnessMatcher.ProcessSample(rawB, l);
-            const float outL = abBypass ? std::clamp(rawB * abGain, -1.0f, 1.0f) : l;
+            const bool replaceRecord = abBypass && !params.abAuditionMonitorOnly;
+            const float outL = replaceRecord ? std::clamp(rawB * abGain, -1.0f, 1.0f) : l;
 
             cL[i] = outL;
             if (cR && !dualSafe && !preDynStem) {
-                cR[i] = runCh1 ? (abBypass ? std::clamp(rawB * abGain, -1.0f, 1.0f) : r) : outL;
+                cR[i] = runCh1 ? (replaceRecord ? std::clamp(rawB * abGain, -1.0f, 1.0f) : r) : outL;
             }
 
             const float absL = std::fabs(l);

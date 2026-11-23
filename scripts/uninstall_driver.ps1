@@ -18,6 +18,7 @@ if ($regProc.ExitCode -ne 0) {
 Get-ChildItem "HKLM:\SYSTEM\CurrentControlSet\Enum\USB\VID_0A73&PID_002E*" -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
     if ($_.PSChildName -eq "Device Parameters") {
         Set-ItemProperty -Path $_.PSPath -Name "EnhancedPowerManagementEnabled" -Value 1 -Type DWord -ErrorAction SilentlyContinue
+        Set-ItemProperty -Path $_.PSPath -Name "SelectiveSuspendEnabled" -Value 1 -Type DWord -ErrorAction SilentlyContinue
     }
 }
 

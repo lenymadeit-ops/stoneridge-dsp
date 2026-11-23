@@ -5,6 +5,7 @@
 
 HMODULE g_hModule = nullptr;
 static std::atomic<LONG> g_serverLocks{0};
+std::atomic<LONG> g_activeInstances{0};
 
 namespace {
 
@@ -86,7 +87,9 @@ _Check_return_ STDAPI DllGetClassObject(_In_ REFCLSID rclsid, _In_ REFIID riid, 
 }
 
 __control_entrypoint(DllExport) STDAPI DllCanUnloadNow() {
-    return (g_serverLocks.load(std::memory_order_relaxed) == 0) ? S_OK : S_FALSE;
+    if (g_serverLocks.load(std::memory_order_relaxed) != 0) return S_FALSE;
+    if (g_activeInstances.load(std::memory_order_relaxed) != 0) return S_FALSE;
+    return S_OK;
 }
 
 STDAPI DllRegisterServer() {

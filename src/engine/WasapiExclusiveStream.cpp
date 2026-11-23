@@ -5,6 +5,7 @@
 #include "engine/RealtimeGuard.h"
 
 #include <avrt.h>
+#include <endpointvolume.h>
 #include <ksmedia.h>
 #include <mmsystem.h>
 
@@ -329,7 +330,7 @@ bool WasapiExclusiveStream::Start() {
     m_controlRoom.Reset();
     m_dacConditioner.Reset();
 
-    timeBeginPeriod(1);
+    m_hiResTimer.Acquire();
 
     BYTE* primeData = nullptr;
     if (SUCCEEDED(m_renderService->GetBuffer(m_wasapiRenderFrames, &primeData))) {
@@ -342,7 +343,7 @@ bool WasapiExclusiveStream::Start() {
     }
     if (FAILED(m_renderClient->Start())) {
         if (m_captureClient) m_captureClient->Stop();
-        timeEndPeriod(1);
+        m_hiResTimer.Release();
         return false;
     }
 
@@ -368,7 +369,7 @@ void WasapiExclusiveStream::Stop() {
 
     if (m_renderClient) m_renderClient->Stop();
     if (m_captureClient) m_captureClient->Stop();
-    timeEndPeriod(1);
+    m_hiResTimer.Release();
 
     if (m_sharedState) {
         m_sharedState->streamRunning.store(false, std::memory_order_relaxed);
@@ -521,11 +522,18 @@ void WasapiExclusiveStream::AudioThreadMain() {
             finalL = hasMon ? m_workOut[0].data() : m_asioOut[0][usedIdx].data();
             finalR = hasMon ? m_workOut[1].data() : m_asioOut[1][usedIdx].data();
         } else {
-            while (m_renderRingL.AvailableToRead() < m_wasapiRenderFrames) {
-                runAsioBlock();
+            runAsioBlock();
+            const uint32_t have = static_cast<uint32_t>(
+                std::min(m_renderRingL.AvailableToRead(), static_cast<size_t>(m_wasapiRenderFrames)));
+            if (have > 0) {
+                m_renderRingL.Pop(m_workOut[0].data(), have);
+                m_renderRingR.Pop(m_workOut[1].data(), have);
             }
-            m_renderRingL.Pop(m_workOut[0].data(), m_wasapiRenderFrames);
-            m_renderRingR.Pop(m_workOut[1].data(), m_wasapiRenderFrames);
+            for (uint32_t i = have; i < m_wasapiRenderFrames; ++i) {
+                const uint32_t src = (have == 0) ? 0u : (have - 1u);
+                m_workOut[0][i] = (have == 0) ? 0.0f : m_workOut[0][src];
+                m_workOut[1][i] = (have == 0) ? 0.0f : m_workOut[1][src];
+            }
             finalL = m_workOut[0].data();
             finalR = m_workOut[1].data();
         }
@@ -596,6 +604,20 @@ void WasapiExclusiveStream::AudioThreadMain() {
     if (SUCCEEDED(hrCo)) {
         CoUninitialize();
     }
+}
+
+void WasapiExclusiveStream::SyncHardwareControls() {
+    if (!m_sharedState || !m_renderDevice) return;
+    IAudioEndpointVolume* vol = nullptr;
+    if (FAILED(m_renderDevice->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_ALL, nullptr,
+                                        reinterpret_cast<void**>(&vol))) || !vol) {
+        return;
+    }
+    const float db = std::clamp(m_sharedState->hardwareDacGainDb.load(std::memory_order_relaxed), -63.5f, 0.0f);
+    const float scalar = std::pow(10.0f, db / 20.0f);
+    vol->SetMasterVolumeLevelScalar(std::clamp(scalar, 0.0f, 1.0f), nullptr);
+    vol->SetMute(m_sharedState->inputMute.load(std::memory_order_relaxed) ? TRUE : FALSE, nullptr);
+    vol->Release();
 }
 
 } // namespace stoneridge

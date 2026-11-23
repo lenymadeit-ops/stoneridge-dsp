@@ -24,6 +24,7 @@ struct ControlRoomParams {
     float monitorReverbAmount = 0.0f;   // 0.0 .. 1.0 (Comfort Chamber wet mix on monitor vocal)
     bool  crossfeedEnabled    = false;  // BS2B-style 300 us speaker crossfeed
     bool  cueCarveEnabled     = false;  // -1.8 dB @ 2.2 kHz dynamic backing duck when singing
+    float backingHeadroomDb   = 0.0f;   // applied to the backing bus when direct monitor is up
 };
 
 class ControlRoomMonitor {
@@ -33,8 +34,8 @@ public:
         const float fs = static_cast<float>(m_fs);
 
         // Prime-ish FDN tap lengths scaled to sample rate (max 192 kHz -> 6100 samples < 8192)
-        constexpr float kMs[4] = { 11.3f, 16.7f, 23.1f, 31.7f };
-        for (int k = 0; k < 4; ++k) {
+        constexpr float kMs[8] = { 7.9f, 11.3f, 16.7f, 23.1f, 29.4f, 31.7f, 37.2f, 43.1f };
+        for (int k = 0; k < 8; ++k) {
             m_fdnDelayLen[k] = std::clamp<uint32_t>(
                 static_cast<uint32_t>(kMs[k] * 0.001f * fs), 64u, kFdnLineMax - 1u);
         }
@@ -112,34 +113,36 @@ public:
                 }
             }
 
-            // 2. Monitor-Only Vocalist Comfort Chamber (4x4 Paraunitary Hadamard FDN)
+            // 2. Monitor-Only Vocalist Comfort Chamber (8x8 Householder FDN)
             float monOutL = mL;
             float monOutR = mR;
             if (hasVerb) {
                 const float monoIn = 0.5f * (mL + mR);
-                float x[4];
-                for (int k = 0; k < 4; ++k) {
+                float x[8];
+                float sum = 0.0f;
+                for (int k = 0; k < 8; ++k) {
                     const uint32_t rIdx = (m_fdnWriteIdx[k] + kFdnLineMax - m_fdnDelayLen[k]) & (kFdnLineMax - 1u);
                     const float rawTap = m_fdnLines[k][rIdx];
-                    // 1-pole HF damping inside feedback loop
                     m_fdnDampState[k] += (rawTap - m_fdnDampState[k]) * m_fdnDampCoeff;
                     x[k] = m_fdnDampState[k];
+                    sum += x[k];
                 }
-                // Orthonormal 4x4 Hadamard scattering matrix (0.5 * H_4) with RT60 ~ 1.1s feedback
-                constexpr float g = 0.72f * 0.5f;
-                const float h0 = ( x[0] + x[1] + x[2] + x[3]) * g;
-                const float h1 = ( x[0] - x[1] + x[2] - x[3]) * g;
-                const float h2 = ( x[0] + x[1] - x[2] - x[3]) * g;
-                const float h3 = ( x[0] - x[1] - x[2] + x[3]) * g;
-                const float fb[4] = { h0, h1, h2, h3 };
-                for (int k = 0; k < 4; ++k) {
-                    m_fdnLines[k][m_fdnWriteIdx[k]] = monoIn + fb[k];
+                constexpr float g = 0.72f;
+                const float proj = sum * 0.25f;
+                for (int k = 0; k < 8; ++k) {
+                    m_fdnLines[k][m_fdnWriteIdx[k]] = monoIn + (x[k] - proj) * g;
                     m_fdnWriteIdx[k] = (m_fdnWriteIdx[k] + 1u) & (kFdnLineMax - 1u);
                 }
-                const float wetL = 0.5f * (x[0] - x[1] + x[2] - x[3]);
-                const float wetR = 0.5f * (x[0] + x[1] - x[2] - x[3]);
+                const float wetL = 0.35f * (x[0] - x[1] + x[2] - x[3]);
+                const float wetR = 0.35f * (x[4] + x[5] - x[6] - x[7]);
                 monOutL += wetL * verbWet;
                 monOutR += wetR * verbWet;
+            }
+
+            if (hasMon && params.backingHeadroomDb < -0.05f && monMix > 0.05f) {
+                const float head = std::pow(10.0f, params.backingHeadroomDb * 0.05f);
+                dL *= head;
+                dR *= head;
             }
 
             float mixL = dL + (hasMon ? monOutL * monMix : 0.0f);
@@ -162,8 +165,8 @@ public:
                 mixR = mixR * 0.86f + m_xfeedLpL * 0.28f;
             }
 
-            dstL[i] = std::clamp(mixL, -1.0f, 1.0f);
-            dstR[i] = std::clamp(mixR, -1.0f, 1.0f);
+            dstL[i] = FiniteOrZero(mixL);
+            dstR[i] = FiniteOrZero(mixR);
         }
     }
 
@@ -194,10 +197,19 @@ private:
 
     double m_fs = 48000.0;
 
-    std::array<std::array<float, kFdnLineMax>, 4> m_fdnLines{};
-    std::array<uint32_t, 4> m_fdnDelayLen{ 542u, 801u, 1108u, 1521u };
-    std::array<uint32_t, 4> m_fdnWriteIdx{};
-    std::array<float, 4>    m_fdnDampState{};
+    static float FiniteOrZero(float x) noexcept {
+        uint32_t u = 0;
+        const auto* p = reinterpret_cast<const unsigned char*>(&x);
+        u = static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8)
+          | (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
+        if ((u & 0x7F800000u) == 0x7F800000u) return 0.0f;
+        return x;
+    }
+
+    std::array<std::array<float, kFdnLineMax>, 8> m_fdnLines{};
+    std::array<uint32_t, 8> m_fdnDelayLen{ 379u, 542u, 801u, 1108u, 1411u, 1521u, 1785u, 2068u };
+    std::array<uint32_t, 8> m_fdnWriteIdx{};
+    std::array<float, 8>    m_fdnDampState{};
     float m_fdnDampCoeff = 0.45f;
 
     std::array<float, kXfeedMax> m_xfeedBufL{};

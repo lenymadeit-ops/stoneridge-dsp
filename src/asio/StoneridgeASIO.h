@@ -19,6 +19,11 @@ inline constexpr GUID CLSID_StoneridgeASIO = {
     0xb8e3a1d4, 0x7c2f, 0x4e9a, { 0x9d, 0x12, 0x8f, 0x4e, 0x2c, 0x1a, 0x5b, 0x01 }
 };
 
+// Hosts that QueryInterface the Steinberg IASIO IID rather than the driver CLSID.
+inline constexpr GUID IID_IASIO_Steinberg = {
+    0x48d0c245, 0x0368, 0x11d1, { 0xa8, 0x4b, 0x00, 0xa0, 0xc9, 0x22, 0x31, 0x96 }
+};
+
 inline constexpr wchar_t kClsidString[]      = L"{B8E3A1D4-7C2F-4E9A-9D12-8F4E2C1A5B01}";
 inline constexpr wchar_t kDriverNameW[]      = L"Mackie EM-91CU+ (Stoneridge)";
 inline constexpr char    kDriverNameA[]      = "Mackie EM-91CU+ (Stoneridge)";

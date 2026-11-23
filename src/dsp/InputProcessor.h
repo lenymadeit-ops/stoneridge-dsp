@@ -48,6 +48,8 @@ struct InputDspParams {
     bool  dualTrackSafetyMode      = false; // Legacy mirror of mic2RoutingMode == 2
     uint32_t mic2RoutingMode       = 0;     // 0=Mirror, 1=Pre-Dynamics Stem, 2=Raw Safety
     bool  abLevelMatchedBypass     = false; // ITU-R BS.1770 K-weighted level-matched raw A/B
+    bool  abAuditionMonitorOnly    = false; // product default is true via SharedState
+    bool  freezeAbxGain            = false;
     bool  ultrasonicLpfEnabled     = true;  // Auto 22 kHz 4th-order LPF at >=88.2 kHz
 };
 
@@ -90,7 +92,7 @@ public:
     bool IsLearningRoomNoise() const noexcept { return m_learnActive; }
     RoomNoiseResult GetLearnResult() const noexcept { return m_learnResult; }
 
-    void StartPreampAutoLevel(float currentHardwarePgaDb) noexcept;
+    void StartPreampAutoLevel(float currentHardwarePgaDb, bool hasHardwarePga = true) noexcept;
     bool IsCalibratingPreamp() const noexcept { return m_preampCalibActive; }
     PreampAutoResult GetPreampAutoResult() const noexcept { return m_preampResult; }
 
@@ -231,6 +233,7 @@ private:
     uint32_t         m_preampTargetSamples = 144000;
     uint32_t         m_preampCount         = 0;
     float            m_preampStartPgaDb    = 0.0f;
+    bool             m_hasHwPga            = true;
     float            m_preampPeakLin       = 0.0f;
     PreampAutoResult m_preampResult{};
 };

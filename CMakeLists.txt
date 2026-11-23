@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(StoneridgeASIO VERSION 1.0.0 LANGUAGES CXX)
+project(StoneridgeASIO VERSION 7.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -20,6 +20,7 @@ if(MSVC)
         /W4
         /permissive-
         /Zc:__cplusplus
+        /utf-8
         $<$<CONFIG:Release>:/O2>
         $<$<CONFIG:Release>:/Oi>
         $<$<CONFIG:Release>:/Ot>
@@ -163,6 +164,7 @@ add_executable(StoneridgeTests
     tests/TestAudioContinuity.cpp
     tests/TestSpectralAndFilters.cpp
     tests/TestChaosIpc.cpp
+    tests/TestVocalV7.cpp
     tests/BenchmarkDsp.cpp
     tests/DiagHardware.cpp
     tests/DiagWdmKs.cpp
@@ -195,3 +197,16 @@ target_link_libraries(ShootoutBench PRIVATE ole32 user32)
 include(CTest)
 include(Catch)
 catch_discover_tests(StoneridgeTests)
+
+set(STONERIDGE_SONORE_SDK "C:/Users/dell/Documents/stoneridge-dom/build/_deps/sonore_sdk_repo-src/sdk" CACHE PATH "Local Sonore SDK")
+option(STONERIDGE_BUILD_PLUGIN "Build the Stoneridge Vocal Chain plugin" ON)
+if(STONERIDGE_BUILD_PLUGIN AND EXISTS "${STONERIDGE_SONORE_SDK}/CMakeLists.txt")
+    add_subdirectory("${STONERIDGE_SONORE_SDK}" "${CMAKE_BINARY_DIR}/sonore-sdk" EXCLUDE_FROM_ALL)
+    include("${STONERIDGE_SONORE_SDK}/cmake/SonoreSDKHelpers.cmake")
+    sonore_add_plugin(StoneridgeVocalChain
+        SOURCES plugin/VocalChainPlugin.cpp
+        VST3 StoneridgeVocalChain_vst3
+        CLAP StoneridgeVocalChain_clap
+        UI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/plugin/ui"
+    )
+endif()

@@ -7,10 +7,12 @@
 #include <cstring>
 
 extern HMODULE g_hModule;
+extern std::atomic<LONG> g_activeInstances;
 
 namespace stoneridge {
 
 StoneridgeASIO::StoneridgeASIO() {
+    g_activeInstances.fetch_add(1, std::memory_order_relaxed);
     OpenSharedMemory();
 }
 
@@ -25,6 +27,7 @@ StoneridgeASIO::~StoneridgeASIO() {
         m_stream.reset();
     }
     CloseSharedMemory();
+    g_activeInstances.fetch_sub(1, std::memory_order_relaxed);
 }
 
 void StoneridgeASIO::OpenSharedMemory() {
@@ -34,7 +37,10 @@ void StoneridgeASIO::OpenSharedMemory() {
         const bool alreadyExists = (GetLastError() == ERROR_ALREADY_EXISTS);
         m_sharedState = static_cast<SharedState*>(
             MapViewOfFile(m_shmHandle.get(), FILE_MAP_ALL_ACCESS, 0, 0, sizeof(SharedState)));
-        if (m_sharedState && !alreadyExists) {
+        const bool valid = m_sharedState
+            && m_sharedState->magic == kSharedStateMagic
+            && m_sharedState->version == kSharedStateVersion;
+        if (m_sharedState && (!alreadyExists || !valid)) {
             InitializeDefaultSharedState(*m_sharedState);
             LoadConfigToSharedState(m_sharedState);
         }
@@ -102,7 +108,7 @@ bool StoneridgeASIO::SelectAndInitializeBackend(uint32_t sampleRate, uint32_t bu
 
 HRESULT STDMETHODCALLTYPE StoneridgeASIO::QueryInterface(REFIID riid, void** ppvObject) {
     if (!ppvObject) return E_POINTER;
-    if (riid == IID_IUnknown || riid == CLSID_StoneridgeASIO) {
+    if (riid == IID_IUnknown || riid == CLSID_StoneridgeASIO || riid == IID_IASIO_Steinberg) {
         *ppvObject = static_cast<IASIO*>(this);
         AddRef();
         return S_OK;
@@ -221,11 +227,14 @@ ASIOError StoneridgeASIO::setSampleRate(ASIOSampleRate sampleRate) {
         ? m_sharedState->requestedBufferSize.load(std::memory_order_relaxed)
         : (m_stream ? m_stream->GetBufferSize() : 128u);
 
+    if (m_callbacks) {
+        if (m_callbacks->asioMessage) {
+            m_callbacks->asioMessage(kAsioResetRequest, 0, nullptr, nullptr);
+        }
+        return ASE_OK;
+    }
     if (!SelectAndInitializeBackend(static_cast<uint32_t>(sampleRate), buf)) {
         return ASE_HWMalfunction;
-    }
-    if (m_callbacks && m_callbacks->sampleRateDidChange) {
-        m_callbacks->sampleRateDidChange(sampleRate);
     }
     return ASE_OK;
 }

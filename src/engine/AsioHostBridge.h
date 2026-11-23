@@ -2,6 +2,7 @@
 
 #include "asio/asio_abi.h"
 #include "dsp/ControlRoomMonitor.h"
+#include "vocal/VoiceLoopBuffer.h"
 #include "dsp/InputProcessor.h"
 #include "engine/AudioFormatConvert.h"
 #include "ipc/SharedState.h"
@@ -46,7 +47,9 @@ inline AsioDispatchResult ProcessAsioHostBlock(SharedState* sharedState,
         if (sharedState->learnState.compare_exchange_strong(
                 expectedPreamp, static_cast<uint32_t>(LearnState::Sampling), std::memory_order_acq_rel)) {
             sharedState->preampCalibActive.store(true, std::memory_order_relaxed);
-            inputDsp.StartPreampAutoLevel(sharedState->hardwarePgaGainDb.load(std::memory_order_relaxed));
+            inputDsp.StartPreampAutoLevel(
+                sharedState->hardwarePgaGainDb.load(std::memory_order_relaxed),
+                sharedState->hasHardwarePga.load(std::memory_order_relaxed));
         }
 
         InputDspParams dspParams{};
@@ -85,12 +88,16 @@ inline AsioDispatchResult ProcessAsioHostBlock(SharedState* sharedState,
         dspParams.dualTrackSafetyMode      = sharedState->dualTrackSafetyMode.load(std::memory_order_relaxed);
         dspParams.mic2RoutingMode          = sharedState->mic2RoutingMode.load(std::memory_order_relaxed);
         dspParams.abLevelMatchedBypass     = sharedState->abLevelMatchedBypass.load(std::memory_order_relaxed);
+        dspParams.abAuditionMonitorOnly    = sharedState->abAuditionMonitorOnly.load(std::memory_order_relaxed);
+        dspParams.freezeAbxGain            = sharedState->freezeAbxGain.load(std::memory_order_relaxed);
         dspParams.ultrasonicLpfEnabled     = sharedState->ultrasonicLpfEnabled.load(std::memory_order_relaxed);
 
         crParams.directMonitorMix    = std::clamp(sharedState->directMonitorMix.load(std::memory_order_relaxed), 0.0f, 1.0f);
         crParams.monitorReverbAmount = std::clamp(sharedState->monitorReverbAmount.load(std::memory_order_relaxed), 0.0f, 1.0f);
         crParams.crossfeedEnabled    = sharedState->crossfeedEnabled.load(std::memory_order_relaxed);
         crParams.cueCarveEnabled     = sharedState->cueCarveEnabled.load(std::memory_order_relaxed);
+        crParams.backingHeadroomDb   = (crParams.directMonitorMix > 0.05f)
+            ? sharedState->backingHeadroomDb.load(std::memory_order_relaxed) : 0.0f;
 
         InputDspTelemetry telemetry{};
         inputDsp.ProcessStereo(inL, inR, bufferSize, dspParams, telemetry);
@@ -133,8 +140,15 @@ inline AsioDispatchResult ProcessAsioHostBlock(SharedState* sharedState,
         sharedState->levelerReductionDb.store(telemetry.levelerReductionDb, std::memory_order_relaxed);
         sharedState->abMatchGainDb.store(telemetry.abMatchGainDb, std::memory_order_relaxed);
         sharedState->capsuleCalibrated.store(kEm91cuCalibrationMeasured, std::memory_order_relaxed);
+        static uint32_t cleanBlocks = 0;
         if (telemetry.adcClipDetected) {
             sharedState->adcClipDetected.store(true, std::memory_order_relaxed);
+            cleanBlocks = 0;
+        } else if (sharedState->adcClipDetected.load(std::memory_order_relaxed)) {
+            if (++cleanBlocks > 48u) {
+                sharedState->adcClipDetected.store(false, std::memory_order_relaxed);
+                cleanBlocks = 0;
+            }
         }
     }
 
@@ -157,8 +171,33 @@ inline AsioDispatchResult ProcessAsioHostBlock(SharedState* sharedState,
     AsioDispatchResult res{ asioOutL, asioOutR };
     const bool needCtrlRoom = (crParams.directMonitorMix > 0.001f) || crParams.crossfeedEnabled;
     if (needCtrlRoom) {
+        static vocal::VoiceLoopBuffer voiceLoop;
+        static double loopRate = 0.0;
+        if (loopRate != sampleRate) {
+            voiceLoop.Prepare(sampleRate);
+            loopRate = sampleRate;
+        }
+        const uint32_t loopCmd = sharedState ? sharedState->voiceLoopState.load(std::memory_order_relaxed) : 0u;
+        if (loopCmd == 1u && voiceLoop.State() != vocal::VoiceLoopState::Recording) voiceLoop.Record();
+        else if (loopCmd == 2u && voiceLoop.State() != vocal::VoiceLoopState::Looping) voiceLoop.Play();
+        else if (loopCmd == 0u && voiceLoop.State() != vocal::VoiceLoopState::Idle) voiceLoop.Stop();
+
+        float loopL[2048];
+        float loopR[2048];
+        const uint32_t nCopy = std::min(bufferSize, 2048u);
+        const float* micL = inL;
+        const float* micR = inR;
+        if (voiceLoop.State() != vocal::VoiceLoopState::Idle && inL) {
+            for (uint32_t i = 0; i < nCopy; ++i) {
+                loopL[i] = inL[i];
+                voiceLoop.Process(loopL[i]);
+                loopR[i] = loopL[i];
+            }
+            micL = loopL;
+            micR = loopR;
+        }
         if (ctrlRoom) {
-            ctrlRoom->ProcessBlock(asioOutL, asioOutR, inL, inR, monWorkL, monWorkR, bufferSize, crParams);
+            ctrlRoom->ProcessBlock(asioOutL, asioOutR, micL, micR, monWorkL, monWorkR, bufferSize, crParams);
         } else {
             BlendDirectMonitorAvx2(asioOutL, inL, monWorkL, bufferSize, crParams.directMonitorMix);
             BlendDirectMonitorAvx2(asioOutR, inR, monWorkR, bufferSize, crParams.directMonitorMix);

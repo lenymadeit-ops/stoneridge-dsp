@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/IAudioStreamBackend.h"
+#include "engine/OsRealtimeTuning.h"
 #include "dsp/ControlRoomMonitor.h"
 #include "dsp/DacConditioner.h"
 #include "dsp/InputProcessor.h"
@@ -50,6 +51,7 @@ public:
 
     void* GetAsioBufferPtr(bool isInput, uint32_t channel, uint32_t doubleBufferIndex) noexcept override;
     void  GetSamplePosition(uint64_t& outSamples, uint64_t& outSystemTimeNs) const noexcept override;
+    void  SyncHardwareControls() override;
 
 private:
     void AudioThreadMain();
@@ -97,6 +99,7 @@ private:
     LockFreeRingBuffer<float> m_renderRingL;
     LockFreeRingBuffer<float> m_renderRingR;
 
+    ScopedHighResTimer m_hiResTimer;
     InputProcessor m_inputDsp;
     ControlRoomMonitor m_controlRoom;
     DacConditioner m_dacConditioner;

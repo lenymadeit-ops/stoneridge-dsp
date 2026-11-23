@@ -43,7 +43,8 @@ public:
 
         // Only update loudness ratio while vocal signal is active (> -55 dBFS)
         // so silence between phrases does not drift the match gain.
-        if (eRaw > 3.16e-6f || eProc > 3.16e-6f) {
+        const bool loudEnough = eRaw > 6.31e-5f;
+        if (!m_freeze && m_gateOpen && loudEnough) {
             m_rawEnergy  += (eRaw - m_rawEnergy) * m_energyAlpha;
             m_procEnergy += (eProc - m_procEnergy) * m_energyAlpha;
         }
@@ -55,6 +56,9 @@ public:
         m_matchGainDb = 20.0f * std::log10(std::max(m_smoothedGain, 1e-5f));
         return m_smoothedGain;
     }
+
+    void SetGateOpen(bool open) noexcept { m_gateOpen = open; }
+    void SetFreeze(bool freeze) noexcept { m_freeze = freeze; }
 
     float GetMatchGainDb() const noexcept { return m_matchGainDb; }
     float GetCurrentGainLin() const noexcept { return m_smoothedGain; }
@@ -116,6 +120,8 @@ private:
     float m_procEnergy   = 1e-6f;
     float m_smoothedGain = 1.0f;
     float m_matchGainDb  = 0.0f;
+    bool  m_gateOpen     = true;
+    bool  m_freeze       = false;
 };
 
 } // namespace stoneridge::vocal

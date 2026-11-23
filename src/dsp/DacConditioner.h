@@ -36,6 +36,9 @@ public:
         m_tpIdx[1]  = 0;
         m_ispGain   = 1.0f;
         m_ispHoldCtr = 0;
+        m_align[0].fill(0.0f);
+        m_align[1].fill(0.0f);
+        m_alignIdx = 0;
         m_err1[0] = m_err1[1] = 0.0f;
         m_err2[0] = m_err2[1] = 0.0f;
         m_err3[0] = m_err3[1] = 0.0f;
@@ -69,8 +72,10 @@ public:
             const float rawTp = std::max(PushChannelTruePeak(0, xL), PushChannelTruePeak(1, xR));
             maxTpLin = std::max(maxTpLin, rawTp);
 
-            float yL = xL;
-            float yR = xR;
+            const float dL = TakeAligned(0, xL);
+            const float dR = TakeAligned(1, xR);
+            float yL = dL;
+            float yR = dR;
             if (ispGuardEnabled) {
                 const float target = (rawTp > kIspCeiling) ? (kIspCeiling / rawTp) : 1.0f;
                 if (target < m_ispGain) {
@@ -81,9 +86,8 @@ public:
                 } else {
                     m_ispGain += (target - m_ispGain) * m_ispRelCoeff;
                 }
-                // Apply ISP gain and clamp safety rail
-                yL = std::clamp(xL * m_ispGain, -0.985f, 0.985f);
-                yR = std::clamp(xR * m_ispGain, -0.985f, 0.985f);
+                yL = std::clamp(dL * m_ispGain, -0.985f, 0.985f);
+                yR = std::clamp(dR * m_ispGain, -0.985f, 0.985f);
                 minGain = std::min(minGain, m_ispGain);
             }
             outL[i] = yL;
@@ -141,8 +145,10 @@ public:
 
             const float rawTp = std::max(PushChannelTruePeak(0, xL), PushChannelTruePeak(1, xR));
 
-            float yL = xL;
-            float yR = xR;
+            const float dL = TakeAligned(0, xL);
+            const float dR = TakeAligned(1, xR);
+            float yL = dL;
+            float yR = dR;
             if (ispGuardEnabled) {
                 const float target = (rawTp > kIspCeiling) ? (kIspCeiling / rawTp) : 1.0f;
                 if (target < m_ispGain) {
@@ -153,8 +159,8 @@ public:
                 } else {
                     m_ispGain += (target - m_ispGain) * m_ispRelCoeff;
                 }
-                yL = std::clamp(xL * m_ispGain, -0.985f, 0.985f);
-                yR = std::clamp(xR * m_ispGain, -0.985f, 0.985f);
+                yL = std::clamp(dL * m_ispGain, -0.985f, 0.985f);
+                yR = std::clamp(dR * m_ispGain, -0.985f, 0.985f);
                 minGain = std::min(minGain, m_ispGain);
                 maxTpLin = std::max(maxTpLin, std::min(rawTp * m_ispGain, kIspCeiling));
             } else {
@@ -222,8 +228,19 @@ public:
 
 private:
     static inline float SafeClampUnclipped(float x) noexcept {
-        if (!(x == x)) return 0.0f;
+        uint32_t u = 0;
+        const auto* p = reinterpret_cast<const unsigned char*>(&x);
+        u = static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8)
+          | (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
+        if ((u & 0x7F800000u) == 0x7F800000u) return 0.0f;
         return std::clamp(x, -4.0f, 4.0f);
+    }
+
+    inline float TakeAligned(uint32_t ch, float x) noexcept {
+        const float y = m_align[ch][m_alignIdx];
+        m_align[ch][m_alignIdx] = x;
+        if (ch == 1u) m_alignIdx = (m_alignIdx + 1u) % 6u;
+        return y;
     }
 
     inline float PushChannelTruePeak(uint32_t ch, float s) noexcept {
@@ -316,6 +333,8 @@ private:
     double   m_sampleRate     = 48000.0;
     float    m_ispRelCoeff    = 0.00083f;
     float    m_ispGain        = 1.0f;
+    std::array<std::array<float, 6>, 2> m_align{};
+    uint32_t m_alignIdx = 0;
     uint32_t m_ispHoldSamples = 144;
     uint32_t m_ispHoldCtr     = 0;
 

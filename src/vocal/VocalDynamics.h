@@ -45,7 +45,7 @@ public:
 
         const float amt      = std::clamp(amount, 0.0f, 1.0f);
         const float threshDb = -6.0f - 20.0f * amt; // -6 dBFS .. -26 dBFS
-        const float ratio    = (ratioMode == 1u) ? 8.0f : 4.0f;
+        const float ratio    = (ratioMode >= 2u) ? 20.0f : ((ratioMode == 1u) ? 8.0f : 4.0f);
         const float slope    = 1.0f - 1.0f / ratio;
         constexpr float kKneeDb = 4.0f;
 

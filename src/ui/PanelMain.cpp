@@ -3,6 +3,7 @@
 
 #include <windows.h>
 #include <dwmapi.h>
+#include <shellapi.h>
 #include <shlobj.h>
 #include <shlwapi.h>
 #include <WebView2.h>
@@ -12,6 +13,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <string>
 
@@ -23,6 +25,8 @@ constexpr wchar_t kWindowClass[] = L"StoneridgePanelWindowClass";
 constexpr wchar_t kWindowTitle[] = L"Mackie EM-91CU+ - Stoneridge ASIO";
 constexpr UINT_PTR kTelemetryTimerId = 1;
 constexpr UINT kTimerIntervalMs = 33;
+constexpr UINT WM_TRAY = WM_APP + 7;
+bool g_forceTelemetry = true;
 
 HWND g_hwnd = nullptr;
 wil::com_ptr<ICoreWebView2Controller> g_webviewController;
@@ -72,6 +76,13 @@ std::string WideToUtf8(const std::wstring& w) {
 
 void PushTelemetryToWebView() {
     if (!g_webview || !g_state) return;
+    static float lastPeak = -999.0f;
+    static int tick = 0;
+    const float peak = g_state->inputPeakDb.load(std::memory_order_relaxed);
+    ++tick;
+    if (!g_forceTelemetry && (tick % 10) != 0 && std::fabs(peak - lastPeak) < 0.4f) return;
+    g_forceTelemetry = false;
+    lastPeak = peak;
 
     json jitterArr = json::array();
     const uint32_t writeIdx = g_state->jitterWriteIndex.load(std::memory_order_relaxed);
@@ -82,9 +93,11 @@ void PushTelemetryToWebView() {
 
     // Persist calibrated settings once room-noise learning completes
     uint32_t learnSt = g_state->learnState.load(std::memory_order_relaxed);
-    if (learnSt == static_cast<uint32_t>(stoneridge::LearnState::Completed)) {
+    static uint32_t prevLearn = 0;
+    if (learnSt == static_cast<uint32_t>(stoneridge::LearnState::Completed) && prevLearn != learnSt) {
         stoneridge::SaveSharedStateToConfig(g_state);
     }
+    prevLearn = learnSt;
 
     json msg = {
         { "type", "state" },
@@ -281,7 +294,18 @@ void HandleWebMessage(const std::wstring& jsonStr) {
             } else if (key == "requestedSampleRate") {
                 g_state->requestedSampleRate.store(val.get<double>(), std::memory_order_relaxed);
                 g_state->configChangeCounter.fetch_add(1, std::memory_order_release);
+            } else if (key == "ecoMode") {
+                g_state->ecoMode.store(val.get<bool>(), std::memory_order_relaxed);
+            } else if (key == "beautyAmount") {
+                g_state->beautyAmount.store(val.get<float>(), std::memory_order_relaxed);
+            } else if (key == "voiceLoopState") {
+                g_state->voiceLoopState.store(val.get<uint32_t>(), std::memory_order_relaxed);
+            } else if (key == "abAuditionMonitorOnly") {
+                g_state->abAuditionMonitorOnly.store(val.get<bool>(), std::memory_order_relaxed);
+            } else if (key == "freezeAbxGain") {
+                g_state->freezeAbxGain.store(val.get<bool>(), std::memory_order_relaxed);
             }
+            g_forceTelemetry = true;
             stoneridge::SaveSharedStateToConfig(g_state);
         } else if (action == "resetXRuns") {
             g_state->xrunCount.store(0, std::memory_order_relaxed);
@@ -375,10 +399,39 @@ void InitializeWebView2(HWND hwnd) {
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
         case WM_SIZE:
+            if (wParam == SIZE_MINIMIZED) {
+                KillTimer(hwnd, kTelemetryTimerId);
+                NOTIFYICONDATAW nid{};
+                nid.cbSize = sizeof(nid);
+                nid.hWnd = hwnd;
+                nid.uID = 1;
+                nid.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
+                nid.uCallbackMessage = WM_TRAY;
+                nid.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
+                wcscpy_s(nid.szTip, L"Stoneridge DSP");
+                Shell_NotifyIconW(NIM_ADD, &nid);
+                ShowWindow(hwnd, SW_HIDE);
+                return 0;
+            }
             if (g_webviewController) {
                 RECT bounds{};
                 GetClientRect(hwnd, &bounds);
                 g_webviewController->put_Bounds(bounds);
+            }
+            SetTimer(hwnd, kTelemetryTimerId, kTimerIntervalMs, nullptr);
+            return 0;
+
+        case WM_TRAY:
+            if (lParam == WM_LBUTTONUP || lParam == WM_LBUTTONDBLCLK) {
+                NOTIFYICONDATAW nid{};
+                nid.cbSize = sizeof(nid);
+                nid.hWnd = hwnd;
+                nid.uID = 1;
+                Shell_NotifyIconW(NIM_DELETE, &nid);
+                ShowWindow(hwnd, SW_RESTORE);
+                SetForegroundWindow(hwnd);
+                SetTimer(hwnd, kTelemetryTimerId, kTimerIntervalMs, nullptr);
+                g_forceTelemetry = true;
             }
             return 0;
 
@@ -420,10 +473,13 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
         const bool alreadyExists = (GetLastError() == ERROR_ALREADY_EXISTS);
         g_state = static_cast<stoneridge::SharedState*>(
             MapViewOfFile(g_shmHandle.get(), FILE_MAP_ALL_ACCESS, 0, 0, sizeof(stoneridge::SharedState)));
-        if (g_state && !alreadyExists) {
+        const bool valid = g_state
+            && g_state->magic == stoneridge::kSharedStateMagic
+            && g_state->version == stoneridge::kSharedStateVersion;
+        if (g_state && (!alreadyExists || !valid)) {
             stoneridge::InitializeDefaultSharedState(*g_state);
+            stoneridge::LoadConfigToSharedState(g_state);
         }
-        stoneridge::LoadConfigToSharedState(g_state);
     }
 
     WNDCLASSEXW wc{};

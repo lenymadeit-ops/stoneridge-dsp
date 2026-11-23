@@ -400,9 +400,14 @@ document.querySelectorAll("#rateSelector button").forEach((btn) => {
   });
 });
 
+let activePreset = "";
 document.querySelectorAll("#presetPills button").forEach((btn) => {
   btn.addEventListener("click", () => {
-    const p = PRESETS[btn.dataset.preset];
+    const name = btn.dataset.preset;
+    const turningOff = activePreset === name;
+    activePreset = turningOff ? "" : name;
+    document.querySelectorAll("#presetPills button").forEach((b) => b.classList.toggle("active", b === btn && !turningOff));
+    const p = turningOff ? PRESETS.raw : PRESETS[name];
     if (!p) return;
     Object.entries(p).forEach(([k, v]) => postParam(k, v));
   });
