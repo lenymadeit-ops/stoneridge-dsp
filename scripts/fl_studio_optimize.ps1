@@ -7,9 +7,16 @@ $backup = Join-Path $backupDir "fl_studio_general.reg"
 
 if (Test-Path $regPath) {
     reg export "HKCU\Software\Image-Line\FL Studio 25\General" $backup /y | Out-Null
-    New-ItemProperty -Path $regPath -Name "Browser enable auto indexing" -Value 0 -PropertyType DWord -Force | Out-Null
-    New-ItemProperty -Path $regPath -Name "Disable FL CLOUD search" -Value 1 -PropertyType DWord -Force | Out-Null
-    New-ItemProperty -Path $regPath -Name "Silent Startup" -Value 1 -PropertyType DWord -Force | Out-Null
+    # FL Studio reads these as REG_SZ. A DWORD crashes startup:
+    # "Invalid data type for 'Browser enable auto indexing'".
+    foreach ($pair in @(
+        @{ Name = "Browser enable auto indexing"; Value = "0" },
+        @{ Name = "Disable FL CLOUD search"; Value = "1" },
+        @{ Name = "Silent Startup"; Value = "1" }
+    )) {
+        Remove-ItemProperty -Path $regPath -Name $pair.Name -ErrorAction SilentlyContinue
+        New-ItemProperty -Path $regPath -Name $pair.Name -Value $pair.Value -PropertyType String -Force | Out-Null
+    }
     Write-Host "Updated $regPath (backup $backup)" -ForegroundColor Green
 } else {
     Write-Host "FL Studio 25 General key not found. Apply the checklist inside FL Studio." -ForegroundColor Yellow

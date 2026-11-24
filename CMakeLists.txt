@@ -165,6 +165,7 @@ add_executable(StoneridgeTests
     tests/TestSpectralAndFilters.cpp
     tests/TestChaosIpc.cpp
     tests/TestVocalV7.cpp
+    tests/TestVocalAcousticAudit.cpp
     tests/BenchmarkDsp.cpp
     tests/DiagHardware.cpp
     tests/DiagWdmKs.cpp
@@ -175,6 +176,7 @@ target_link_libraries(StoneridgeTests PRIVATE
     StoneridgeCore
     Catch2::Catch2WithMain
 )
+target_include_directories(StoneridgeTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 set_target_properties(StoneridgeTests PROPERTIES
     LINK_OPTIONS "/ENTRY:wmainCRTStartup"
@@ -210,9 +212,32 @@ if(STONERIDGE_BUILD_PLUGIN AND EXISTS "${STONERIDGE_SONORE_SDK}/CMakeLists.txt")
         UI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/plugin/ui"
     )
     if(TARGET StoneridgeVocalChain_objects)
-        target_include_directories(StoneridgeVocalChain_objects PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+        target_include_directories(StoneridgeVocalChain_objects PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/src
+            ${CMAKE_CURRENT_SOURCE_DIR})
         target_link_libraries(StoneridgeVocalChain_objects PRIVATE StoneridgeCore)
         add_custom_command(TARGET StoneridgeVocalChain_vst3 POST_BUILD
             COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File "${CMAKE_SOURCE_DIR}/scripts/install_vst3.ps1" -Configuration $<CONFIG>)
+    endif()
+    sonore_add_standalone(StoneridgeVocalChainStandalone
+        SOURCES plugin/VocalChainPlugin.cpp
+        UI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/plugin/ui"
+        UI_ENTRY index.html
+        NAME "Stoneridge Vocal Chain"
+        BUNDLE_ID com.stoneridge.vocalchain.standalone
+        VERSION 7.0.0
+    )
+    if(TARGET StoneridgeVocalChainStandalone)
+        target_include_directories(StoneridgeVocalChainStandalone PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/src
+            ${CMAKE_CURRENT_SOURCE_DIR})
+        target_link_libraries(StoneridgeVocalChainStandalone PRIVATE StoneridgeCore)
+    endif()
+    sonore_add_rt_test(StoneridgeVocalChainRt SOURCES plugin/VocalChainPlugin.cpp)
+    if(TARGET StoneridgeVocalChainRt)
+        target_include_directories(StoneridgeVocalChainRt PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/src
+            ${CMAKE_CURRENT_SOURCE_DIR})
+        target_link_libraries(StoneridgeVocalChainRt PRIVATE StoneridgeCore)
     endif()
 endif()

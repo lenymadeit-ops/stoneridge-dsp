@@ -3,11 +3,26 @@
 <head>
 <meta charset="utf-8">
 <title>Stoneridge Vocal Chain</title>
-<link rel="stylesheet" href="../../src/ui/web/styles.css">
+<link rel="stylesheet" href="stoneridge-tokens.css">
+<link rel="stylesheet" href="chain.css">
 </head>
 <body>
 <main class="shell">
-  <header><h1>Stoneridge Vocal Chain</h1><p>Insert on the vocal track. The ASIO driver prints the same chain on the way in.</p></header>
+  <header>
+    <h1>Stoneridge Vocal Chain</h1>
+    <p>Same analog chain the ASIO driver prints. Load Live ASIO Tracking Chain reads the panel export.</p>
+  </header>
+  <ol class="flow">
+    <li>Shield</li>
+    <li>Mic Locker</li>
+    <li>Preamp</li>
+    <li>Gate / De-Ess</li>
+    <li>1176 JFET</li>
+    <li>LA-2A Gray-Box</li>
+    <li>Console EQ</li>
+    <li>Beauty</li>
+  </ol>
+  <p class="note">Preset 0 follows the knobs. Preset 1-6 are the producer chains. Set Preset above 0.5 and below 1 to recall live_tracking_chain.json.</p>
 </main>
 </body>
 </html>

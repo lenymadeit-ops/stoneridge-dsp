@@ -35,6 +35,34 @@ function Read-Dword([string]$Path, [string]$Name, [int]$Fallback) {
     try { return [int](Get-ItemProperty -Path $Path -Name $Name -ErrorAction Stop).$Name } catch { return $Fallback }
 }
 
+function Get-UsbSuspendIndex([string]$Which) {
+    $q = powercfg /q SCHEME_CURRENT $usbSub $usbSet | Out-String
+    $label = if ($Which -eq "AC") { "Current AC Power Setting Index" } else { "Current DC Power Setting Index" }
+    if ($q -match [regex]::Escape($label) + ":\s+0x([0-9A-Fa-f]+)") {
+        return [Convert]::ToInt32($Matches[1], 16)
+    }
+    return 1
+}
+
+function Show-DpcSummary([string]$Etl) {
+    $xperf = Get-Command xperf.exe -ErrorAction SilentlyContinue
+    if (-not $xperf) {
+        Write-Host "DPC ETL saved. xperf.exe is not on PATH, so stacks over 500 us were not decoded."
+        return
+    }
+    $dump = & xperf.exe -i $Etl -a dpcisr 2>&1 | Out-String
+    $hits = @()
+    foreach ($line in ($dump -split "`r?`n")) {
+        if ($line -match "(\d+)\s+us" -and [int]$Matches[1] -gt 500) { $hits += $line.Trim() }
+    }
+    if ($hits.Count -eq 0) {
+        Write-Host "No DPC stacks over 500 us in the 15 s AudioGlitch trace."
+    } else {
+        Write-Host "DPC stacks over 500 us:"
+        $hits | Select-Object -First 12 | ForEach-Object { Write-Host "  $_" }
+    }
+}
+
 if ($Audit -or $Enable) {
     Write-Host "USB selective suspend AC/DC, MMCSS, and service snapshot" -ForegroundColor Cyan
     powercfg /q SCHEME_CURRENT $usbSub $usbSet
@@ -54,6 +82,7 @@ if ($DpcTrace) {
     Start-Sleep -Seconds 15
     wpr.exe -stop $etl
     Write-Host "DPC trace written to $etl"
+    Show-DpcSummary $etl
 }
 
 if (-not $Enable -and -not $Restore) { exit 0 }
@@ -92,7 +121,7 @@ foreach ($name in $services) {
 }
 
 $snapOut = @{
-    usbAc = 1; usbDc = 1
+    usbAc = (Get-UsbSuspendIndex "AC"); usbDc = (Get-UsbSuspendIndex "DC")
     network = (Read-Dword $mmPath "NetworkThrottlingIndex" 10)
     sysResp = (Read-Dword $mmPath "SystemResponsiveness" 20)
     proPri = (Read-Dword $proPath "Priority" 1)

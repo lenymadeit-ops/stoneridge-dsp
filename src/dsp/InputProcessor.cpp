@@ -256,6 +256,8 @@ void InputProcessor::Reset() noexcept {
     m_holdCounter   = 0;
     m_gateOpen      = true;
     m_dcPrevX[0]    = m_dcPrevX[1] = 0.0f;
+    m_outDcX[0]     = m_outDcX[1] = 0.0f;
+    m_outDcY[0]     = m_outDcY[1] = 0.0f;
     m_dcPrevY[0]    = m_dcPrevY[1] = 0.0f;
     m_lookL.fill(0.0f);
     m_lookR.fill(0.0f);
@@ -717,11 +719,22 @@ void InputProcessor::ProcessStereo(float* left, float* right, uint32_t numFrames
             m_loudnessMatcher.SetFreeze(params.freezeAbxGain);
             const float abGain = m_loudnessMatcher.ProcessSample(rawB, l);
             const bool replaceRecord = abBypass && !params.abAuditionMonitorOnly;
-            const float outL = replaceRecord ? std::clamp(rawB * abGain, -1.0f, 1.0f) : l;
+            float outL = replaceRecord ? std::clamp(rawB * abGain, -1.0f, 1.0f) : l;
+            const float blocked = outL - m_outDcX[0] + m_dcCoeff * m_outDcY[0];
+            m_outDcX[0] = outL;
+            m_outDcY[0] = blocked;
+            outL = blocked;
 
             cL[i] = outL;
             if (cR && !dualSafe && !preDynStem) {
-                cR[i] = runCh1 ? (replaceRecord ? std::clamp(rawB * abGain, -1.0f, 1.0f) : r) : outL;
+                float outR = runCh1 ? (replaceRecord ? std::clamp(rawB * abGain, -1.0f, 1.0f) : r) : outL;
+                if (runCh1 && !replaceRecord) {
+                    const float blockedR = outR - m_outDcX[1] + m_dcCoeff * m_outDcY[1];
+                    m_outDcX[1] = outR;
+                    m_outDcY[1] = blockedR;
+                    outR = blockedR;
+                }
+                cR[i] = outR;
             }
 
             const float absL = std::fabs(l);

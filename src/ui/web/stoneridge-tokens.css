@@ -1,0 +1,34 @@
+:root {
+  --sr-bg: #0b0b0d;
+  --sr-card: #16161a;
+  --sr-line: rgba(255, 255, 255, 0.08);
+  --sr-text: #f5f5f7;
+  --sr-muted: #98989f;
+  --sr-accent: #0a84ff;
+  --sr-green: #30d158;
+  --sr-radius: 16px;
+  --sr-font: "Segoe UI", sans-serif;
+}
+
+.sr-custom-select-menu {
+  position: absolute;
+  z-index: 20;
+  min-width: 180px;
+  padding: 6px;
+  border-radius: 12px;
+  background: #1c1c20;
+  border: 1px solid var(--sr-line);
+  color: var(--sr-text);
+}
+
+.sr-custom-select-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  color: inherit;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+}

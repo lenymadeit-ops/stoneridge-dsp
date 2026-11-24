@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Mackie EM-91CU+ - Stoneridge ASIO</title>
+  <link rel="stylesheet" href="stoneridge-tokens.css" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body data-page="track">
@@ -38,15 +39,32 @@
       </div>
     </header>
 
+    <section class="utility-bar" aria-label="Session">
+      <span class="pill-tag" id="streamPill">Standby</span>
+      <button type="button" class="learn-btn compact-btn" id="abBypassBtn">A: Studio Chain</button>
+      <span class="pill-tag pill-ok" id="recordingSafe" style="display:none;">Recording Safe</span>
+      <button type="button" class="learn-btn compact-btn" id="slotABtn">Slot A</button>
+      <button type="button" class="learn-btn compact-btn" id="slotBBtn">Slot B</button>
+      <button type="button" class="learn-btn compact-btn" id="ecoBtn">ECO: OFF</button>
+      <span class="eco-dot" id="ecoDot" aria-hidden="true"></span>
+      <span class="eco-badge" id="ecoBadge">ECO SAVER ON</span>
+    </section>
+
     <!-- Presets & 1-Click Room Calibration Bar -->
     <section class="presets-bar">
       <div class="presets-left">
         <span class="section-eyebrow">Vocal Chain Presets</span>
         <div class="preset-pills" id="presetPills">
-          <button class="preset-pill" data-preset="raw">Raw Bypass</button>
-          <button class="preset-pill" data-preset="podcast">Podcast Clean</button>
-          <button class="preset-pill" data-preset="tight">Tight Vocal Gate</button>
-          <button class="preset-pill" data-preset="studio">Studio Vocal</button>
+          <button class="preset-pill" data-preset="modernPop">Modern Pop Gloss</button>
+          <button class="preset-pill" data-preset="rnb">Warm R&amp;B Velvet</button>
+          <button class="preset-pill" data-preset="rap">Punchy Rap Authority</button>
+          <button class="preset-pill" data-preset="acoustic">Intimate Acoustic</button>
+          <button class="preset-pill" data-preset="podcast">Podcast Broadcast</button>
+          <button class="preset-pill" data-preset="raw">Raw Reference</button>
+        </div>
+        <div class="lock-pins">
+          <label><input type="checkbox" id="lockPga" checked> Lock PGA</label>
+          <label><input type="checkbox" id="lockGate" checked> Lock Gate</label>
         </div>
       </div>
 
@@ -58,6 +76,13 @@
           Learn Room Noise
         </button>
       </div>
+    </section>
+
+    <section class="setup-strip tab-track" id="setupStrip">
+      <div class="setup-step" id="stepConnect"><span>1</span> Connect FL Studio</div>
+      <div class="setup-step" id="stepLevel"><span>2</span> 3s Auto-Level</div>
+      <div class="setup-step" id="stepNoise"><span>3</span> 2s Room Noise</div>
+      <p class="setup-hint" id="setupHint">Open FL Studio and arm the Stoneridge input to enable calibration.</p>
     </section>
 
     <nav class="tab-bar" id="tabBar">
@@ -187,6 +212,19 @@
           </label>
         </div>
 
+        <div class="voice-loop tab-track">
+          <button type="button" class="learn-btn" id="voiceRecBtn">Record 5s Phrase</button>
+          <button type="button" class="learn-btn" id="voicePlayBtn">Loop Hands-Free</button>
+          <button type="button" class="learn-btn" id="voiceStopBtn">Stop</button>
+        </div>
+        <div class="wiring-card">
+          <strong>FL Studio 2-Insert Wiring</strong>
+          <p>Insert 1: Mono Mic 1 = Tap A Master | Insert 2: Mono Mic 2 = Tap B/C Safety</p>
+          <button type="button" class="learn-btn compact-btn" id="profileTrack">Tracking (96 smp / 2.0 ms)</button>
+          <button type="button" class="learn-btn compact-btn" id="profileMix">Mixing (512 smp)</button>
+          <button type="button" class="learn-btn compact-btn" id="syncPluginBtn">Sync to Plugin</button>
+        </div>
+
         <div class="toggle-row">
           <div>
             <div class="toggle-title">ADAA1 Alias-Free Soft-Clipper</div>
@@ -287,6 +325,22 @@
               <span class="value-pill mono" id="gateHpfVal">90 Hz</span>
             </div>
             <input type="range" id="gateHpf" min="0" max="250" step="5" value="90" data-default="90" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <label for="gateHysteresis">Gate Hysteresis</label>
+              <span class="value-pill mono" id="gateHysteresisVal">4 dB</span>
+            </div>
+            <input type="range" id="gateHysteresis" min="0" max="12" step="0.5" value="4" data-default="4" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <label for="shieldStrength">Shield Correction Strength</label>
+              <span class="value-pill mono" id="shieldStrengthVal">85%</span>
+            </div>
+            <input type="range" id="shieldStrength" min="0" max="100" step="1" value="85" data-default="85" />
           </div>
         </div>
 
@@ -415,14 +469,23 @@
 
       <!-- Phase 3: Legendary Preamps (Jiles-Atherton Iron) & Circuit Console EQs Card -->
       <section class="glass-card card span-2 tab-chain">
+        <div class="flow-strip" id="flowStrip">
+          <button type="button" data-inspect="shield">Shield</button>
+          <button type="button" data-inspect="mic">Mic Locker</button>
+          <button type="button" data-inspect="pre">Preamp</button>
+          <button type="button" data-inspect="gate">Gate/De-Ess</button>
+          <button type="button" data-inspect="fet">1176 JFET</button>
+          <button type="button" data-inspect="la2a">LA-2A</button>
+          <button type="button" data-inspect="eq">Console EQ</button>
+          <button type="button" data-inspect="beauty">Beauty</button>
+        </div>
+        <p class="flow-detail" id="flowDetail">Click a block to inspect that stage.</p>
+        <canvas id="curveCanvas" width="920" height="120"></canvas>
         <div class="card-header">
           <div>
             <h2>Legendary Preamps &amp; Console EQ Strip</h2>
             <div class="chain-extra">
               <label>Beauty <input type="range" id="beautyAmount" min="0" max="1" step="0.01" value="0"></label>
-              <button type="button" id="voiceRecBtn">Loop Rec</button>
-              <button type="button" id="voicePlayBtn">Loop Play</button>
-              <button type="button" id="voiceStopBtn">Loop Stop</button>
             </div>
             <p class="card-sub">4x oversampled Jiles-Atherton ferromagnetic iron &amp; circuit-derived passive/inductor EQs</p>
           </div>
@@ -532,8 +595,7 @@
           <div>
             <h2>ASIO Engine, Clocking &amp; Converters</h2>
             <div class="engine-extra">
-              <label><input type="checkbox" id="ecoToggle"> ECO</label>
-              <span class="pill-tag" id="streamPill">Stream idle</span>
+              <span class="pill-tag" id="rateSyncBadge">Requested matches Active</span>
             </div>
             <p class="card-sub">96 / 192 smp @ 48 kHz lock exact 1.000 ms USB SOF frames</p>
           </div>
@@ -684,11 +746,23 @@
             <div class="sparkline-label">Callback Jitter (us)</div>
             <canvas id="jitterCanvas" width="280" height="58"></canvas>
           </div>
+          <div class="abx-box">
+            <div class="sparkline-label">10-Trial Blind ABX</div>
+            <p id="abxStatus">Record a 5s phrase, then start. X is hidden. Loudness match stays frozen.</p>
+            <button type="button" class="learn-btn compact-btn" id="abxStart">Start 10 trials</button>
+            <button type="button" class="learn-btn compact-btn" id="abxHearA">Hear A</button>
+            <button type="button" class="learn-btn compact-btn" id="abxHearB">Hear B</button>
+            <button type="button" class="learn-btn compact-btn" id="abxHearX">Hear X</button>
+            <button type="button" class="learn-btn compact-btn" id="abxPickA">X is A</button>
+            <button type="button" class="learn-btn compact-btn" id="abxPickB">X is B</button>
+            <p class="mono" id="abxScore">Score 0/10</p>
+          </div>
         </div>
       </section>
     </div>
   </main>
 
+  <div class="eco-toast" id="ecoToast">ECO SAVER ON</div>
   <script src="app.js"></script>
 </body>
 </html>

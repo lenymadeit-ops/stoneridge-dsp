@@ -403,7 +403,7 @@ def main() -> None:
         source_desc = "Google Pixel 11 Pro Silicon MEMS Substitution (5.0 ms Free-Field Gated)"
         print(f"Calibrated EM-91CU+ vs Pixel 11 Pro MEMS: fit RMS={rms_err:.3f} dB, max={max_err:.3f} dB")
     else:
-        return
+        parser.error("Provide --em91 with --pixel11, or --with-shield with --no-shield, or --selftest.")
 
     if args.out_csv:
         args.out_csv.parent.mkdir(parents=True, exist_ok=True)

@@ -3,6 +3,7 @@
 // Fixed 5 s dry-vocal loop. Memory is static. Playback never allocates.
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 
 namespace stoneridge::vocal {
@@ -71,10 +72,18 @@ public:
             return false;
         }
         if (m_state == VoiceLoopState::Looping && m_count > 32) {
-            const uint32_t i0 = static_cast<uint32_t>(m_play);
+            const uint32_t i0 = static_cast<uint32_t>(m_play) % m_count;
             const uint32_t i1 = (i0 + 1u) % m_count;
-            const float frac = m_play - static_cast<float>(i0);
-            sample = Storage()[i0] + (Storage()[i1] - Storage()[i0]) * frac;
+            const float frac = m_play - static_cast<float>(static_cast<uint32_t>(m_play));
+            float y = Storage()[i0] + (Storage()[i1] - Storage()[i0]) * frac;
+            const uint32_t fadeN = std::min<uint32_t>(480u, m_count / 4u);
+            if (fadeN > 8u && i0 + fadeN >= m_count) {
+                const float t = static_cast<float>(i0 + fadeN - m_count) / static_cast<float>(fadeN);
+                const uint32_t head = (i0 + fadeN - m_count) % m_count;
+                const float w = 0.5f - 0.5f * std::cos(3.14159265f * std::clamp(t, 0.0f, 1.0f));
+                y = y * (1.0f - w) + Storage()[head] * w;
+            }
+            sample = y;
             m_play += 1.0f / m_step;
             if (m_play >= static_cast<float>(m_count)) m_play -= static_cast<float>(m_count);
             return true;

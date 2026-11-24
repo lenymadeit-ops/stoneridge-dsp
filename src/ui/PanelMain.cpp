@@ -26,7 +26,15 @@ constexpr wchar_t kWindowTitle[] = L"Mackie EM-91CU+ - Stoneridge ASIO";
 constexpr UINT_PTR kTelemetryTimerId = 1;
 constexpr UINT kTimerIntervalMs = 33;
 constexpr UINT WM_TRAY = WM_APP + 7;
+constexpr UINT ID_TRAY_MUTE = 2001;
+constexpr UINT ID_TRAY_TRACK = 2002;
+constexpr UINT ID_TRAY_MIX = 2003;
+constexpr UINT ID_TRAY_RESTORE = 2004;
+constexpr UINT ID_TRAY_QUIT = 2005;
 bool g_forceTelemetry = true;
+bool g_trayAdded = false;
+bool g_quitting = false;
+bool g_webviewStarting = false;
 
 HWND g_hwnd = nullptr;
 wil::com_ptr<ICoreWebView2Controller> g_webviewController;
@@ -80,6 +88,20 @@ void PushTelemetryToWebView() {
     static int tick = 0;
     const float peak = g_state->inputPeakDb.load(std::memory_order_relaxed);
     ++tick;
+    const bool streaming = g_state->streamRunning.load(std::memory_order_relaxed);
+    const bool eco = g_state->ecoMode.load(std::memory_order_relaxed);
+    BOOL cloaked = FALSE;
+    if (g_hwnd) DwmGetWindowAttribute(g_hwnd, 14, &cloaked, sizeof(cloaked));
+    uint32_t learnSt = g_state->learnState.load(std::memory_order_relaxed);
+    static uint32_t prevLearn = 0;
+    if (learnSt == static_cast<uint32_t>(stoneridge::LearnState::Completed) && prevLearn != learnSt) {
+        stoneridge::SaveSharedStateToConfig(g_state);
+    }
+    prevLearn = learnSt;
+
+    if (cloaked) return;
+    if (!g_forceTelemetry && !streaming && std::fabs(peak - lastPeak) < 0.5f) return;
+    if (!g_forceTelemetry && eco && (tick % 4) != 0 && std::fabs(peak - lastPeak) < 0.8f) return;
     if (!g_forceTelemetry && (tick % 10) != 0 && std::fabs(peak - lastPeak) < 0.4f) return;
     g_forceTelemetry = false;
     lastPeak = peak;
@@ -90,14 +112,6 @@ void PushTelemetryToWebView() {
         const uint32_t idx = (writeIdx + i) % stoneridge::kJitterHistorySize;
         jitterArr.push_back(g_state->jitterHistoryUs[idx].load(std::memory_order_relaxed));
     }
-
-    // Persist calibrated settings once room-noise learning completes
-    uint32_t learnSt = g_state->learnState.load(std::memory_order_relaxed);
-    static uint32_t prevLearn = 0;
-    if (learnSt == static_cast<uint32_t>(stoneridge::LearnState::Completed) && prevLearn != learnSt) {
-        stoneridge::SaveSharedStateToConfig(g_state);
-    }
-    prevLearn = learnSt;
 
     json msg = {
         { "type", "state" },
@@ -158,6 +172,12 @@ void PushTelemetryToWebView() {
             { "themeMode",            g_state->themeMode.load(std::memory_order_relaxed) },
             { "ecoMode",              g_state->ecoMode.load(std::memory_order_relaxed) },
             { "beautyAmount",         g_state->beautyAmount.load(std::memory_order_relaxed) },
+            { "contourAmt",           g_state->contourAmt.load(std::memory_order_relaxed) },
+            { "harmonicSculptAmt",    g_state->harmonicSculptAmt.load(std::memory_order_relaxed) },
+            { "deHarshAmt",           g_state->deHarshAmt.load(std::memory_order_relaxed) },
+            { "parallelGlueAmt",      g_state->parallelGlueAmt.load(std::memory_order_relaxed) },
+            { "backingHeadroomDb",    g_state->backingHeadroomDb.load(std::memory_order_relaxed) },
+            { "freezeAbxGain",        g_state->freezeAbxGain.load(std::memory_order_relaxed) },
             { "voiceLoopState",       g_state->voiceLoopState.load(std::memory_order_relaxed) },
             { "abAuditionMonitorOnly", g_state->abAuditionMonitorOnly.load(std::memory_order_relaxed) },
             { "wdfEqEnabled",         g_state->wdfEqEnabled.load(std::memory_order_relaxed) },
@@ -304,6 +324,16 @@ void HandleWebMessage(const std::wstring& jsonStr) {
                 g_state->ecoMode.store(val.get<bool>(), std::memory_order_relaxed);
             } else if (key == "beautyAmount") {
                 g_state->beautyAmount.store(val.get<float>(), std::memory_order_relaxed);
+            } else if (key == "contourAmt") {
+                g_state->contourAmt.store(val.get<float>(), std::memory_order_relaxed);
+            } else if (key == "harmonicSculptAmt") {
+                g_state->harmonicSculptAmt.store(val.get<float>(), std::memory_order_relaxed);
+            } else if (key == "deHarshAmt") {
+                g_state->deHarshAmt.store(val.get<float>(), std::memory_order_relaxed);
+            } else if (key == "parallelGlueAmt") {
+                g_state->parallelGlueAmt.store(val.get<float>(), std::memory_order_relaxed);
+            } else if (key == "backingHeadroomDb") {
+                g_state->backingHeadroomDb.store(val.get<float>(), std::memory_order_relaxed);
             } else if (key == "voiceLoopState") {
                 g_state->voiceLoopState.store(val.get<uint32_t>(), std::memory_order_relaxed);
             } else if (key == "abAuditionMonitorOnly") {
@@ -330,6 +360,8 @@ void HandleWebMessage(const std::wstring& jsonStr) {
             g_state->learnProgress.store(0.0f, std::memory_order_relaxed);
             g_state->preampCalibActive.store(true, std::memory_order_relaxed);
             g_state->learnState.store(static_cast<uint32_t>(stoneridge::LearnState::StartPreampLevel), std::memory_order_release);
+        } else if (action == "syncToPlugin") {
+            stoneridge::SaveLiveTrackingChain(g_state);
         } else if (action == "applyOptimalPreset") {
             g_state->engineMode.store(static_cast<uint32_t>(stoneridge::EngineMode::WdmKsDirect), std::memory_order_relaxed);
             g_state->ksIrpCount.store(3, std::memory_order_relaxed);
@@ -359,11 +391,15 @@ void InitializeWebView2(HWND hwnd) {
         nullptr, userDataDir.empty() ? nullptr : userDataDir.c_str(), nullptr,
         Microsoft::WRL::Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
             [hwnd, webDir](HRESULT result, ICoreWebView2Environment* env) -> HRESULT {
-                if (FAILED(result) || !env) return result;
+                if (FAILED(result) || !env) {
+                    g_webviewStarting = false;
+                    return result;
+                }
                 env->CreateCoreWebView2Controller(
                     hwnd,
                     Microsoft::WRL::Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
                         [hwnd, webDir](HRESULT res, ICoreWebView2Controller* controller) -> HRESULT {
+                            g_webviewStarting = false;
                             if (FAILED(res) || !controller) return res;
                             g_webviewController = controller;
                             g_webviewController->get_CoreWebView2(&g_webview);
@@ -406,21 +442,82 @@ void InitializeWebView2(HWND hwnd) {
             }).Get());
 }
 
+void DestroyWebView() {
+    if (g_hwnd) KillTimer(g_hwnd, kTelemetryTimerId);
+    if (g_webviewController) {
+        g_webviewController->Close();
+        g_webviewController.reset();
+    }
+    g_webview.reset();
+}
+
+void UpdateTrayTip(HWND hwnd) {
+    if (!g_trayAdded || !g_state) return;
+    const bool muted = g_state->inputMute.load(std::memory_order_relaxed);
+    const bool clip = g_state->adcClipDetected.load(std::memory_order_relaxed);
+    const bool live = g_state->streamRunning.load(std::memory_order_relaxed);
+    const wchar_t* tip = L"Stoneridge | Standby";
+    if (clip) tip = L"Stoneridge | ADC Clip";
+    else if (muted) tip = L"Stoneridge | Muted";
+    else if (live) tip = L"Stoneridge | Active";
+    NOTIFYICONDATAW nid{};
+    nid.cbSize = sizeof(nid);
+    nid.hWnd = hwnd;
+    nid.uID = 1;
+    nid.uFlags = NIF_TIP;
+    wcscpy_s(nid.szTip, tip);
+    Shell_NotifyIconW(NIM_MODIFY, &nid);
+}
+
+void ShowTrayMenu(HWND hwnd) {
+    HMENU menu = CreatePopupMenu();
+    AppendMenuW(menu, MF_STRING, ID_TRAY_MUTE, L"Mute");
+    AppendMenuW(menu, MF_STRING, ID_TRAY_TRACK, L"Tracking 96 smp");
+    AppendMenuW(menu, MF_STRING, ID_TRAY_MIX, L"Mixing 512 smp");
+    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(menu, MF_STRING, ID_TRAY_RESTORE, L"Restore");
+    AppendMenuW(menu, MF_STRING, ID_TRAY_QUIT, L"Quit");
+    POINT pt{};
+    GetCursorPos(&pt);
+    SetForegroundWindow(hwnd);
+    TrackPopupMenu(menu, TPM_RIGHTBUTTON | TPM_BOTTOMALIGN, pt.x, pt.y, 0, hwnd, nullptr);
+    DestroyMenu(menu);
+}
+
+void EnterTray(HWND hwnd) {
+    KillTimer(hwnd, kTelemetryTimerId);
+    DestroyWebView();
+    NOTIFYICONDATAW nid{};
+    nid.cbSize = sizeof(nid);
+    nid.hWnd = hwnd;
+    nid.uID = 1;
+    nid.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
+    nid.uCallbackMessage = WM_TRAY;
+    nid.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
+    wcscpy_s(nid.szTip, L"Stoneridge | Standby");
+    if (g_trayAdded) Shell_NotifyIconW(NIM_MODIFY, &nid);
+    else g_trayAdded = Shell_NotifyIconW(NIM_ADD, &nid) != FALSE;
+    ShowWindow(hwnd, SW_HIDE);
+    UpdateTrayTip(hwnd);
+}
+
+void LeaveTray(HWND hwnd) {
+    ShowWindow(hwnd, SW_RESTORE);
+    SetForegroundWindow(hwnd);
+    if (!g_webview && !g_webviewStarting) {
+        g_webviewStarting = true;
+        InitializeWebView2(hwnd);
+    }
+    const UINT interval = (g_state && g_state->ecoMode.load(std::memory_order_relaxed)) ? 83u : kTimerIntervalMs;
+    SetTimer(hwnd, kTelemetryTimerId, interval, nullptr);
+    g_forceTelemetry = true;
+}
+
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
         case WM_SIZE:
             if (wParam == SIZE_MINIMIZED) {
-                KillTimer(hwnd, kTelemetryTimerId);
-                NOTIFYICONDATAW nid{};
-                nid.cbSize = sizeof(nid);
-                nid.hWnd = hwnd;
-                nid.uID = 1;
-                nid.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
-                nid.uCallbackMessage = WM_TRAY;
-                nid.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
-                wcscpy_s(nid.szTip, L"Stoneridge DSP");
-                Shell_NotifyIconW(NIM_ADD, &nid);
-                ShowWindow(hwnd, SW_HIDE);
+                EnterTray(hwnd);
                 return 0;
             }
             if (g_webviewController) {
@@ -428,25 +525,47 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 GetClientRect(hwnd, &bounds);
                 g_webviewController->put_Bounds(bounds);
             }
-            SetTimer(hwnd, kTelemetryTimerId, kTimerIntervalMs, nullptr);
-            return 0;
-
-        case WM_TRAY:
-            if (lParam == WM_LBUTTONUP || lParam == WM_LBUTTONDBLCLK) {
-                NOTIFYICONDATAW nid{};
-                nid.cbSize = sizeof(nid);
-                nid.hWnd = hwnd;
-                nid.uID = 1;
-                Shell_NotifyIconW(NIM_DELETE, &nid);
-                ShowWindow(hwnd, SW_RESTORE);
-                SetForegroundWindow(hwnd);
-                SetTimer(hwnd, kTelemetryTimerId, kTimerIntervalMs, nullptr);
-                g_forceTelemetry = true;
+            {
+                const UINT interval = (g_state && g_state->ecoMode.load(std::memory_order_relaxed)) ? 83u : kTimerIntervalMs;
+                SetTimer(hwnd, kTelemetryTimerId, interval, nullptr);
             }
             return 0;
 
+        case WM_TRAY:
+            if (lParam == WM_RBUTTONUP) ShowTrayMenu(hwnd);
+            else if (lParam == WM_LBUTTONDBLCLK || lParam == WM_LBUTTONUP) LeaveTray(hwnd);
+            return 0;
+
+        case WM_COMMAND:
+            if (LOWORD(wParam) == ID_TRAY_MUTE && g_state) {
+                const bool muted = g_state->inputMute.load(std::memory_order_relaxed);
+                g_state->inputMute.store(!muted, std::memory_order_relaxed);
+                UpdateTrayTip(hwnd);
+            } else if (LOWORD(wParam) == ID_TRAY_TRACK && g_state) {
+                g_state->requestedBufferSize.store(96u, std::memory_order_relaxed);
+                g_state->requestedSampleRate.store(48000.0, std::memory_order_relaxed);
+                g_state->configChangeCounter.fetch_add(1, std::memory_order_release);
+            } else if (LOWORD(wParam) == ID_TRAY_MIX && g_state) {
+                g_state->requestedBufferSize.store(512u, std::memory_order_relaxed);
+                g_state->configChangeCounter.fetch_add(1, std::memory_order_release);
+            } else if (LOWORD(wParam) == ID_TRAY_RESTORE) {
+                LeaveTray(hwnd);
+            } else if (LOWORD(wParam) == ID_TRAY_QUIT) {
+                g_quitting = true;
+                DestroyWindow(hwnd);
+            }
+            return 0;
+
+        case WM_CLOSE:
+            if (!g_quitting) {
+                EnterTray(hwnd);
+                return 0;
+            }
+            break;
+
         case WM_TIMER:
             if (wParam == kTelemetryTimerId) {
+                UpdateTrayTip(hwnd);
                 PushTelemetryToWebView();
             }
             return 0;
@@ -457,6 +576,14 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
         case WM_DESTROY:
             KillTimer(hwnd, kTelemetryTimerId);
+            if (g_trayAdded) {
+                NOTIFYICONDATAW nid{};
+                nid.cbSize = sizeof(nid);
+                nid.hWnd = hwnd;
+                nid.uID = 1;
+                Shell_NotifyIconW(NIM_DELETE, &nid);
+                g_trayAdded = false;
+            }
             PostQuitMessage(0);
             return 0;
     }

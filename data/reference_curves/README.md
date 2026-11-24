@@ -1,6 +1,6 @@
 # Reference Microphone & Hardware Curve Sources
 
-Numeric target CSVs are only committed once digitized from official manufacturer datasheets (never fabricated):
+Shipped mic-locker curves live in src/vocal/MicLockerCurves.h. The notes below name the datasheets the lab fit is checked against:
 
 1. **Neumann U87 Ai** - Official Neumann U87 Ai datasheet on-axis cardioid frequency response (`https://www.neumann.com/en-us/products/microphones/u-87-ai/`) - *Digitization pending for Phase 4*.
 2. **Sony C800G** - Official Sony C-800G PAC operating instructions frequency response graph - *Digitization pending for Phase 4*.

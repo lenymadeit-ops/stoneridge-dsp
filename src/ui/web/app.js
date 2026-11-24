@@ -7,71 +7,59 @@ const postMsg = (payload) => {
 const postParam = (key, value) => postMsg({ action: "setParam", key, value });
 const el = (id) => document.getElementById(id);
 
+const INIT_PATCH = {
+  inputGainDb: 0.0,
+  softClipEnabled: true,
+  audioHpfEnabled: false,
+  micModel: 0,
+  virtualDistanceCm: 15,
+  preampModel: 0,
+  preampDriveDb: 0,
+  transformerIronAmount: 0.5,
+  consoleEqModel: 0,
+  consoleLowDb: 0,
+  consoleMidDb: 0,
+  consoleAirDb: 0,
+  fetPeakCatchAmount: 0,
+  fetRatioMode: 0,
+  vocalLevelerAmount: 0,
+  beautyAmount: 0,
+  deEsserAmount: 0,
+  plosiveGuardEnabled: false,
+  capsuleEqEnabled: false,
+  molecularClip: true,
+  wdfEqEnabled: true,
+};
+
 const PRESETS = {
-  raw: {
-    inputGainDb: 0.0,
-    softClipEnabled: false,
-    audioHpfEnabled: false,
-    gateEnabled: false,
-    gateLookAheadEnabled: false,
-    humNotchFreqHz: 0,
-    capsuleEqEnabled: false,
-    deEsserAmount: 0.0,
-    plosiveGuardEnabled: false,
-    vocalLevelerAmount: 0.0,
+  modernPop: {
+    ...INIT_PATCH, inputGainDb: 2, micModel: 1, preampModel: 1, preampDriveDb: 4,
+    consoleEqModel: 1, consoleLowDb: 2, consoleAirDb: 3, fetPeakCatchAmount: 0.35,
+    vocalLevelerAmount: 0.45, beautyAmount: 0.55, deEsserAmount: 0.4, audioHpfEnabled: true, capsuleEqEnabled: true,
+  },
+  rnb: {
+    ...INIT_PATCH, inputGainDb: 1.5, micModel: 3, preampModel: 3, preampDriveDb: 6,
+    transformerIronAmount: 0.7, consoleEqModel: 2, consoleLowDb: 2.5, consoleMidDb: 1,
+    vocalLevelerAmount: 0.6, beautyAmount: 0.4, deEsserAmount: 0.25, audioHpfEnabled: true,
+  },
+  rap: {
+    ...INIT_PATCH, inputGainDb: 3, micModel: 5, preampModel: 2, preampDriveDb: 5,
+    consoleEqModel: 4, consoleLowDb: 1, consoleMidDb: 2, fetPeakCatchAmount: 0.7,
+    fetRatioMode: 2, beautyAmount: 0.25, deEsserAmount: 0.5, plosiveGuardEnabled: true, audioHpfEnabled: true,
+  },
+  acoustic: {
+    ...INIT_PATCH, inputGainDb: 1, micModel: 4, preampModel: 3, preampDriveDb: 2,
+    consoleEqModel: 1, consoleAirDb: 1.5, vocalLevelerAmount: 0.3, beautyAmount: 0.2, deEsserAmount: 0.15,
   },
   podcast: {
-    inputGainDb: 6.0,
-    softClipEnabled: true,
-    audioHpfEnabled: true,
-    gateEnabled: true,
-    gateLookAheadEnabled: false,
-    gateThresholdDb: -44,
-    gateRangeDb: -50,
-    gateAttackMs: 2.0,
-    gateHoldMs: 90,
-    gateReleaseMs: 180,
-    gateSidechainHpfHz: 85,
-    capsuleEqEnabled: true,
-    deEsserAmount: 0.35,
-    plosiveGuardEnabled: true,
-    vocalLevelerAmount: 0.40,
+    ...INIT_PATCH, inputGainDb: 4, micModel: 2, preampModel: 4, preampDriveDb: 1,
+    consoleEqModel: 3, consoleLowDb: -1, consoleMidDb: 1, fetPeakCatchAmount: 0.2,
+    vocalLevelerAmount: 0.5, deEsserAmount: 0.45, plosiveGuardEnabled: true, audioHpfEnabled: true, capsuleEqEnabled: true,
   },
-  tight: {
-    inputGainDb: 4.0,
-    softClipEnabled: true,
-    audioHpfEnabled: true,
-    gateEnabled: true,
-    gateLookAheadEnabled: true,
-    gateThresholdDb: -34,
-    gateRangeDb: -70,
-    gateAttackMs: 0.8,
-    gateHoldMs: 40,
-    gateReleaseMs: 90,
-    gateSidechainHpfHz: 110,
-    capsuleEqEnabled: false,
-    deEsserAmount: 0.20,
-    plosiveGuardEnabled: true,
-    vocalLevelerAmount: 0.0,
-  },
-  studio: {
-    inputGainDb: 8.0,
-    softClipEnabled: true,
-    audioHpfEnabled: true,
-    gateEnabled: true,
-    gateLookAheadEnabled: true,
-    gateThresholdDb: -46,
-    gateRangeDb: -45,
-    gateAttackMs: 1.5,
-    gateHoldMs: 110,
-    gateReleaseMs: 220,
-    gateSidechainHpfHz: 90,
-    capsuleEqEnabled: true,
-    deEsserAmount: 0.45,
-    plosiveGuardEnabled: true,
-    vocalLevelerAmount: 0.55,
-  },
+  raw: { ...INIT_PATCH, softClipEnabled: true, molecularClip: false },
 };
+
+const LOCK_KEYS = ["hardwarePgaGainDb", "gateEnabled", "gateThresholdDb", "gateHysteresisDb", "humNotchFreqHz"];
 
 function dbToPercent(db, min = -60, max = 0) {
   return Math.max(0, Math.min(100, ((db - min) / (max - min)) * 100));
@@ -401,6 +389,36 @@ document.querySelectorAll("#rateSelector button").forEach((btn) => {
 });
 
 let activePreset = "";
+let undoStack = [];
+let redoStack = [];
+let slotA = null;
+let slotB = null;
+let latestParams = {};
+let curveDirty = true;
+let tickCurve = 0;
+
+function lockedKeys() {
+  const keys = [];
+  if (el("lockPga") && el("lockPga").checked) keys.push("hardwarePgaGainDb");
+  if (el("lockGate") && el("lockGate").checked) keys.push("gateEnabled", "gateThresholdDb", "gateHysteresisDb", "humNotchFreqHz");
+  return keys;
+}
+
+function pushUndo() {
+  undoStack.push({ ...latestParams });
+  if (undoStack.length > 40) undoStack.shift();
+  redoStack = [];
+}
+
+function applyPatch(patch, skipLocked) {
+  const skip = skipLocked ? lockedKeys() : [];
+  Object.entries(patch).forEach(([k, v]) => {
+    if (skip.indexOf(k) >= 0) return;
+    postParam(k, v);
+  });
+  curveDirty = true;
+}
+
 document.querySelectorAll("#tabBar button").forEach((btn) => {
   btn.addEventListener("click", () => {
     document.body.dataset.page = btn.dataset.tab;
@@ -423,19 +441,226 @@ document.querySelectorAll("#presetPills button").forEach((btn) => {
   btn.addEventListener("click", () => {
     const name = btn.dataset.preset;
     const turningOff = activePreset === name;
+    pushUndo();
     activePreset = turningOff ? "" : name;
     document.querySelectorAll("#presetPills button").forEach((b) => b.classList.toggle("active", b === btn && !turningOff));
-    const p = turningOff ? PRESETS.raw : PRESETS[name];
-    if (!p) return;
-    Object.entries(p).forEach(([k, v]) => postParam(k, v));
+    applyPatch(turningOff ? INIT_PATCH : PRESETS[name], true);
   });
 });
+
+const hyst = el("gateHysteresis");
+if (hyst) hyst.addEventListener("input", (e) => {
+  const v = parseFloat(e.target.value);
+  el("gateHysteresisVal").textContent = `${v.toFixed(1)} dB`;
+  postParam("gateHysteresisDb", v);
+  curveDirty = true;
+});
+const shield = el("shieldStrength");
+if (shield) shield.addEventListener("input", (e) => {
+  const v = parseFloat(e.target.value);
+  el("shieldStrengthVal").textContent = `${Math.round(v)}%`;
+  postParam("capsuleCorrectionStrength", v / 100);
+  curveDirty = true;
+});
+
+const ecoBtn = el("ecoBtn");
+function setEco(on) {
+  postParam("ecoMode", !!on);
+  document.body.classList.toggle("eco-on", !!on);
+  if (ecoBtn) ecoBtn.textContent = on ? "ECO: ON" : "ECO: OFF";
+  const badge = el("ecoBadge");
+  if (badge) badge.style.display = on ? "inline-flex" : "none";
+  const dot = el("ecoDot");
+  if (dot) dot.classList.toggle("lit", !!on);
+  if (on) {
+    const toast = el("ecoToast");
+    if (toast) {
+      toast.classList.add("show");
+      setTimeout(() => toast.classList.remove("show"), 1600);
+    }
+  }
+}
+if (ecoBtn) ecoBtn.addEventListener("click", () => setEco(!(latestParams.ecoMode)));
+
+if (el("abBypassBtn")) el("abBypassBtn").addEventListener("click", () => {
+  pushUndo();
+  postParam("abLevelMatchedBypass", !latestParams.abLevelMatchedBypass);
+  postParam("abAuditionMonitorOnly", true);
+});
+if (el("slotABtn")) el("slotABtn").addEventListener("click", () => {
+  if (slotA && el("slotABtn").dataset.armed === "1") { pushUndo(); applyPatch(slotA, false); }
+  else { slotA = { ...latestParams }; el("slotABtn").dataset.armed = "1"; el("slotABtn").textContent = "Slot A *"; }
+});
+if (el("slotBBtn")) el("slotBBtn").addEventListener("click", () => {
+  if (slotB && el("slotBBtn").dataset.armed === "1") { pushUndo(); applyPatch(slotB, false); }
+  else { slotB = { ...latestParams }; el("slotBBtn").dataset.armed = "1"; el("slotBBtn").textContent = "Slot B *"; }
+});
+document.addEventListener("keydown", (e) => {
+  if (!(e.ctrlKey || e.metaKey)) return;
+  if (e.key === "z" && undoStack.length) {
+    redoStack.push({ ...latestParams });
+    applyPatch(undoStack.pop(), false);
+    e.preventDefault();
+  } else if (e.key === "y" && redoStack.length) {
+    undoStack.push({ ...latestParams });
+    applyPatch(redoStack.pop(), false);
+    e.preventDefault();
+  }
+});
+if (el("profileTrack")) el("profileTrack").addEventListener("click", () => {
+  postParam("requestedBufferSize", 96);
+  postParam("requestedSampleRate", 48000);
+});
+if (el("profileMix")) el("profileMix").addEventListener("click", () => postParam("requestedBufferSize", 512));
+if (el("syncPluginBtn")) el("syncPluginBtn").addEventListener("click", () => postMsg({ action: "syncToPlugin" }));
+
+const flowCopy = {
+  shield: "Shield correction, before the mic model.",
+  mic: "Mic Locker capsule and head-amp.",
+  pre: "Preamp iron and tube or IC stage.",
+  gate: "Gate, plosive guard, and de-esser.",
+  fet: "1176 JFET, including All-Buttons British.",
+  la2a: "LA-2A gray-box optical leveler.",
+  eq: "Console EQ in the oversampled analog rack.",
+  beauty: "Psychoacoustic beauty, monitor stays separate.",
+};
+document.querySelectorAll("#flowStrip button").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("#flowStrip button").forEach((b) => b.classList.toggle("active", b === btn));
+    const detail = el("flowDetail");
+    if (detail) detail.textContent = flowCopy[btn.dataset.inspect] || "";
+  });
+});
+
+let abx = { trial: 0, correct: 0, hidden: 0, running: false };
+function binomP(k) {
+  let p = 0;
+  const choose = (n, r) => {
+    let c = 1;
+    for (let i = 0; i < r; i++) c = c * (n - i) / (i + 1);
+    return c;
+  };
+  for (let i = k; i <= 10; i++) p += choose(10, i);
+  return p / 1024;
+}
+function abxHear(which) {
+  const raw = which === "B" || (which === "X" && abx.hidden === 1);
+  postParam("abLevelMatchedBypass", raw);
+  postParam("abAuditionMonitorOnly", true);
+  postParam("freezeAbxGain", true);
+}
+if (el("abxStart")) el("abxStart").addEventListener("click", () => {
+  abx = { trial: 1, correct: 0, hidden: Math.random() < 0.5 ? 0 : 1, running: true };
+  postParam("voiceLoopState", 2);
+  postParam("freezeAbxGain", true);
+  el("abxStatus").textContent = "Trial 1 of 10. Hear A, B, then X.";
+  el("abxScore").textContent = "Score 0/10";
+});
+if (el("abxHearA")) el("abxHearA").addEventListener("click", () => abxHear("A"));
+if (el("abxHearB")) el("abxHearB").addEventListener("click", () => abxHear("B"));
+if (el("abxHearX")) el("abxHearX").addEventListener("click", () => abxHear("X"));
+function abxAnswer(isA) {
+  if (!abx.running) return;
+  const guess = isA ? 0 : 1;
+  if (guess === abx.hidden) abx.correct += 1;
+  if (abx.trial >= 10) {
+    abx.running = false;
+    const p = binomP(abx.correct);
+    el("abxScore").textContent = `Score ${abx.correct}/10  p=${p.toFixed(4)}`;
+    el("abxStatus").textContent = "Finished. Loudness match unlocked.";
+    postParam("freezeAbxGain", false);
+    postParam("abLevelMatchedBypass", false);
+    return;
+  }
+  abx.trial += 1;
+  abx.hidden = Math.random() < 0.5 ? 0 : 1;
+  el("abxStatus").textContent = `Trial ${abx.trial} of 10. Hear A, B, then X.`;
+  el("abxScore").textContent = `Score ${abx.correct}/10`;
+}
+if (el("abxPickA")) el("abxPickA").addEventListener("click", () => abxAnswer(true));
+if (el("abxPickB")) el("abxPickB").addEventListener("click", () => abxAnswer(false));
+
+function drawCurve(params, telemetry) {
+  const canvas = el("curveCanvas");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const w = canvas.width;
+  const h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  ctx.strokeStyle = "#0a84ff";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  const low = params.consoleLowDb || 0;
+  const mid = params.consoleMidDb || 0;
+  const air = params.consoleAirDb || 0;
+  const shieldAmt = params.capsuleCorrectionStrength || 0;
+  const gr = Math.abs((telemetry && telemetry.fetReductionDb) || 0) + Math.abs((telemetry && telemetry.levelerReductionDb) || 0);
+  for (let x = 0; x < w; x++) {
+    const t = x / w;
+    const db = low * Math.exp(-Math.pow((t - 0.12) / 0.12, 2))
+      + mid * Math.exp(-Math.pow((t - 0.42) / 0.14, 2))
+      + air * Math.exp(-Math.pow((t - 0.82) / 0.16, 2))
+      + shieldAmt * 2.5 * Math.exp(-Math.pow((t - 0.7) / 0.2, 2))
+      - gr * 0.15 * Math.exp(-Math.pow((t - 0.55) / 0.2, 2));
+    const y = h * 0.55 - db * 4;
+    if (x === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+}
 
 function applyStateMessage(msg) {
   if (!msg || msg.type !== "state") return;
   const { params, telemetry } = msg;
+  latestParams = params;
 
   applyTheme(params.themeMode, telemetry.windowsDark);
+  const stream = el("streamPill");
+  if (stream) {
+    stream.textContent = telemetry.streamRunning ? "DAW Stream Active" : "Standby";
+    stream.classList.toggle("pill-ok", !!telemetry.streamRunning);
+  }
+  const safe = el("recordingSafe");
+  if (safe) safe.style.display = params.abAuditionMonitorOnly !== false ? "inline-flex" : "none";
+  const ab = el("abBypassBtn");
+  if (ab) {
+    const match = telemetry.abMatchGainDb || 0;
+    ab.textContent = params.abLevelMatchedBypass
+      ? `B: Raw (${match >= 0 ? "+" : ""}${match.toFixed(1)} dB)`
+      : "A: Studio Chain";
+  }
+  if (params.ecoMode) document.body.classList.add("eco-on");
+  else document.body.classList.remove("eco-on");
+  if (ecoBtn) ecoBtn.textContent = params.ecoMode ? "ECO: ON" : "ECO: OFF";
+  const badge = el("ecoBadge");
+  if (badge) badge.style.display = params.ecoMode ? "inline-flex" : "none";
+  const dot = el("ecoDot");
+  if (dot) dot.classList.toggle("lit", !!params.ecoMode);
+  const live = !!telemetry.streamRunning;
+  ["autoPreampBtn", "learnNoiseBtn"].forEach((id) => {
+    const node = el(id);
+    if (node) node.disabled = !live;
+  });
+  const hint = el("setupHint");
+  if (hint) hint.style.display = live ? "none" : "block";
+  ["stepConnect", "stepLevel", "stepNoise"].forEach((id, i) => {
+    const node = el(id);
+    if (!node) return;
+    const done = i === 0 ? live : (i === 1 ? telemetry.learnState === 3 && Math.abs(telemetry.recommendedTrimDb || 0) + Math.abs(telemetry.recommendedPgaDb || 0) > 0.05 : telemetry.measuredNoiseFloorDb > -90);
+    node.classList.toggle("done", !!done);
+  });
+  const syncBadge = el("rateSyncBadge");
+  if (syncBadge) {
+    const req = Math.round(params.requestedSampleRate || 0);
+    const act = Math.round(telemetry.activeSampleRate || 0);
+    const reqB = params.requestedBufferSize || 0;
+    const actB = telemetry.activeBufferSize || 0;
+    syncBadge.textContent = (req === act && reqB === actB) ? "Requested matches Active" : `Requested ${reqB}/${req} -> Active ${actB}/${act}`;
+  }
+  if (curveDirty || (live && (tickCurve++ % 8 === 0))) {
+    drawCurve(params, telemetry);
+    curveDirty = false;
+  }
 
   const syncSlider = (id, labelId, val, fmt) => {
     const node = el(id);
@@ -472,6 +697,8 @@ function applyStateMessage(msg) {
   syncSlider("gateHold", "gateHoldVal", params.gateHoldMs, (v) => `${Math.round(v)} ms`);
   syncSlider("gateRelease", "gateReleaseVal", params.gateReleaseMs, (v) => `${Math.round(v)} ms`);
   syncSlider("gateHpf", "gateHpfVal", params.gateSidechainHpfHz, (v) => (v === 0 ? "Off" : `${Math.round(v)} Hz`));
+  if (el("gateHysteresis")) syncSlider("gateHysteresis", "gateHysteresisVal", params.gateHysteresisDb || 0, (v) => `${Number(v).toFixed(1)} dB`);
+  if (el("shieldStrength")) syncSlider("shieldStrength", "shieldStrengthVal", Math.round((params.capsuleCorrectionStrength || 0.85) * 100), (v) => `${Math.round(v)}%`);
 
   el("muteBtn").classList.toggle("muted", params.inputMute);
   el("muteBtn").textContent = params.inputMute ? "Muted" : "Mute";
@@ -609,8 +836,6 @@ function applyStateMessage(msg) {
   // Live Telemetry
   el("deviceDot").classList.toggle("connected", telemetry.deviceConnected);
   const micTag = telemetry.captureActive ? " | Mic Active" : "";
-  const stream = el("streamPill");
-  if (stream) stream.textContent = telemetry.streamRunning ? "Stream running" : "Stream idle";
   el("deviceStatusText").textContent = telemetry.deviceConnected
     ? `${telemetry.deviceName || "Mackie EM-91CU+"}${micTag}${telemetry.streamRunning ? "" : " | Open FL Studio to arm"}`
     : "Waiting for Mackie EM-91CU+";

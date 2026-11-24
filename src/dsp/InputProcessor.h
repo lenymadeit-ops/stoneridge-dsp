@@ -8,6 +8,7 @@
 #include "vocal/PreampAndConsole.h"
 #include "vocal/VocalDynamics.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 
@@ -111,6 +112,13 @@ public:
     void ProcessMono(float* mono, uint32_t numFrames,
                      const InputDspParams& params, InputDspTelemetry& outTelemetry) noexcept;
 
+    // Post-DC-blocker dry tap from the last block (max 2048). Monitor loop only.
+    void CopyDryTap(float* dst, uint32_t n) const noexcept {
+        if (!dst || n == 0) return;
+        const uint32_t count = std::min<uint32_t>(n, static_cast<uint32_t>(m_rawScratch.size()));
+        for (uint32_t i = 0; i < count; ++i) dst[i] = m_rawScratch[i];
+    }
+
     static void EnableDenormalProtection() noexcept;
 
 private:
@@ -163,6 +171,8 @@ private:
     float    m_dcCoeff         = 0.9993f;
     float    m_dcPrevX[2]      = {0.0f, 0.0f};
     float    m_dcPrevY[2]      = {0.0f, 0.0f};
+    float    m_outDcX[2]       = {0.0f, 0.0f};
+    float    m_outDcY[2]       = {0.0f, 0.0f};
 
     // 1.0 ms circular look-ahead delay line (max 256 samples >= 192 @ 192kHz)
     static constexpr uint32_t kLookAheadMax = 256;

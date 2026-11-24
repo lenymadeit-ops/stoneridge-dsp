@@ -23,7 +23,9 @@ function Show-Gb([int64]$Bytes) {
 
 $categories = @(
     @{ Name = "XDM app data"; Path = "$env:USERPROFILE\.xdm-app-data\Data"; Kind = "tree" },
-    @{ Name = "McAfee program data"; Path = "C:\ProgramData\McAfee"; Kind = "tree" },
+    @{ Name = "McAfee logs"; Path = "C:\ProgramData\McAfee\Endpoint Security\Logs"; Kind = "tree" },
+    @{ Name = "McAfee quarantine"; Path = "C:\ProgramData\McAfee\Endpoint Security\Quarantine"; Kind = "tree" },
+    @{ Name = "McAfee cache"; Path = "C:\ProgramData\McAfee\WebAdvisor\Cache"; Kind = "tree" },
     @{ Name = "LGHUB caches"; Path = "C:\ProgramData\LGHUB"; Kind = "tree" },
     @{ Name = "Chrome cache"; Path = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Cache"; Kind = "tree" },
     @{ Name = "Chrome code cache"; Path = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Code Cache"; Kind = "tree" },
@@ -40,6 +42,8 @@ foreach ($c in $categories) {
     $bytes = Get-FolderBytes $c.Path
     Write-Host ("{0,-24} {1,10}  {2}" -f $c.Name, (Show-Gb $bytes), $c.Path)
 }
+$mcafeeAll = Get-FolderBytes "C:\ProgramData\McAfee"
+Write-Host ("{0,-24} {1,10}  {2}" -f "McAfee total (report)", (Show-Gb $mcafeeAll), "C:\ProgramData\McAfee")
 
 $installerHits = @()
 if (Test-Path "$env:USERPROFILE\Downloads") {

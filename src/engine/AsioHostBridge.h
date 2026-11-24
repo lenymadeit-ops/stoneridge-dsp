@@ -35,6 +35,7 @@ inline AsioDispatchResult ProcessAsioHostBlock(SharedState* sharedState,
                                                ASIOCallbacks* callbacks,
                                                ControlRoomMonitor* ctrlRoom = nullptr) noexcept {
     ControlRoomParams crParams{};
+    InputDspParams dspParams{};
 
     if (sharedState) {
         uint32_t expectedLearn = static_cast<uint32_t>(LearnState::StartRoom);
@@ -52,7 +53,6 @@ inline AsioDispatchResult ProcessAsioHostBlock(SharedState* sharedState,
                 sharedState->hasHardwarePga.load(std::memory_order_relaxed));
         }
 
-        InputDspParams dspParams{};
         dspParams.gainDb               = sharedState->inputGainDb.load(std::memory_order_relaxed);
         dspParams.mute                 = sharedState->inputMute.load(std::memory_order_relaxed) ||
                                          sharedState->hardwareMuted.load(std::memory_order_relaxed);
@@ -176,38 +176,47 @@ inline AsioDispatchResult ProcessAsioHostBlock(SharedState* sharedState,
     }
 
     AsioDispatchResult res{ asioOutL, asioOutR };
-    const bool needCtrlRoom = (crParams.directMonitorMix > 0.001f) || crParams.crossfeedEnabled;
-    if (needCtrlRoom) {
-        static vocal::VoiceLoopBuffer voiceLoop;
-        static double loopRate = 0.0;
-        if (loopRate != sampleRate) {
-            voiceLoop.Prepare(sampleRate);
-            loopRate = sampleRate;
-        }
-        const uint32_t loopCmd = sharedState ? sharedState->voiceLoopState.load(std::memory_order_relaxed) : 0u;
-        if (loopCmd == 1u && voiceLoop.State() != vocal::VoiceLoopState::Recording) voiceLoop.Record();
-        else if (loopCmd == 2u && voiceLoop.State() != vocal::VoiceLoopState::Looping) voiceLoop.Play();
-        else if (loopCmd == 0u && voiceLoop.State() != vocal::VoiceLoopState::Idle) voiceLoop.Stop();
+    static vocal::VoiceLoopBuffer voiceLoop;
+    static InputProcessor audition;
+    static double loopRate = 0.0;
+    if (loopRate != sampleRate) {
+        voiceLoop.Prepare(sampleRate);
+        audition.Prepare(sampleRate, 2);
+        loopRate = sampleRate;
+    }
+    const uint32_t loopCmd = sharedState ? sharedState->voiceLoopState.load(std::memory_order_relaxed) : 0u;
+    if (loopCmd == 1u && voiceLoop.State() != vocal::VoiceLoopState::Recording) voiceLoop.Record();
+    else if (loopCmd == 2u && voiceLoop.State() != vocal::VoiceLoopState::Looping) voiceLoop.Play();
+    else if (loopCmd == 0u && voiceLoop.State() != vocal::VoiceLoopState::Idle) voiceLoop.Stop();
 
-        float loopL[2048];
-        float loopR[2048];
+    const bool looping = voiceLoop.State() == vocal::VoiceLoopState::Looping;
+    if (looping && crParams.directMonitorMix < 0.2f) crParams.directMonitorMix = 0.85f;
+    const bool needCtrlRoom = (crParams.directMonitorMix > 0.001f) || crParams.crossfeedEnabled || looping
+        || voiceLoop.State() == vocal::VoiceLoopState::Recording;
+    if (needCtrlRoom && inL && monWorkL && monWorkR) {
+        float phrase[2048];
         const uint32_t nCopy = std::min(bufferSize, 2048u);
         const float* micL = inL;
-        const float* micR = inR;
-        if (voiceLoop.State() != vocal::VoiceLoopState::Idle && inL) {
+        const float* micR = inR ? inR : inL;
+        if (voiceLoop.State() == vocal::VoiceLoopState::Recording) {
+            inputDsp.CopyDryTap(phrase, nCopy);
+            for (uint32_t i = 0; i < nCopy; ++i) voiceLoop.Process(phrase[i]);
+        } else if (looping) {
             for (uint32_t i = 0; i < nCopy; ++i) {
-                loopL[i] = inL[i];
-                voiceLoop.Process(loopL[i]);
-                loopR[i] = loopL[i];
+                phrase[i] = 0.0f;
+                voiceLoop.Process(phrase[i]);
             }
-            micL = loopL;
-            micR = loopR;
+            InputDspTelemetry auditionTel{};
+            dspParams.abLevelMatchedBypass = false;
+            audition.ProcessStereo(phrase, nullptr, nCopy, dspParams, auditionTel);
+            micL = phrase;
+            micR = phrase;
         }
         if (ctrlRoom) {
             ctrlRoom->ProcessBlock(asioOutL, asioOutR, micL, micR, monWorkL, monWorkR, bufferSize, crParams);
         } else {
-            BlendDirectMonitorAvx2(asioOutL, inL, monWorkL, bufferSize, crParams.directMonitorMix);
-            BlendDirectMonitorAvx2(asioOutR, inR, monWorkR, bufferSize, crParams.directMonitorMix);
+            BlendDirectMonitorAvx2(asioOutL, micL, monWorkL, bufferSize, crParams.directMonitorMix);
+            BlendDirectMonitorAvx2(asioOutR, micR, monWorkR, bufferSize, crParams.directMonitorMix);
         }
         res.outL = monWorkL;
         res.outR = monWorkR;

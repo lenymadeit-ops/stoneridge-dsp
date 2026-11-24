@@ -88,6 +88,12 @@ inline void LoadConfigToSharedState(SharedState* state) {
         if (j.contains("abAuditionMonitorOnly")) state->abAuditionMonitorOnly.store(j["abAuditionMonitorOnly"].get<bool>(), std::memory_order_relaxed);
         if (j.contains("ecoMode"))              state->ecoMode.store(j["ecoMode"].get<bool>(), std::memory_order_relaxed);
         if (j.contains("beautyAmount"))         state->beautyAmount.store(j["beautyAmount"].get<float>(), std::memory_order_relaxed);
+        if (j.contains("contourAmt"))           state->contourAmt.store(j["contourAmt"].get<float>(), std::memory_order_relaxed);
+        if (j.contains("harmonicSculptAmt"))    state->harmonicSculptAmt.store(j["harmonicSculptAmt"].get<float>(), std::memory_order_relaxed);
+        if (j.contains("deHarshAmt"))           state->deHarshAmt.store(j["deHarshAmt"].get<float>(), std::memory_order_relaxed);
+        if (j.contains("parallelGlueAmt"))      state->parallelGlueAmt.store(j["parallelGlueAmt"].get<float>(), std::memory_order_relaxed);
+        if (j.contains("backingHeadroomDb"))    state->backingHeadroomDb.store(j["backingHeadroomDb"].get<float>(), std::memory_order_relaxed);
+        if (j.contains("freezeAbxGain"))        state->freezeAbxGain.store(j["freezeAbxGain"].get<bool>(), std::memory_order_relaxed);
         if (j.contains("wdfEqEnabled"))         state->wdfEqEnabled.store(j["wdfEqEnabled"].get<bool>(), std::memory_order_relaxed);
         if (j.contains("molecularClip"))        state->molecularClip.store(j["molecularClip"].get<bool>(), std::memory_order_relaxed);
         if (j.contains("voiceLoopState"))       state->voiceLoopState.store(j["voiceLoopState"].get<uint32_t>(), std::memory_order_relaxed);
@@ -155,6 +161,12 @@ inline void SaveSharedStateToConfig(const SharedState* state) {
         { "abAuditionMonitorOnly", state->abAuditionMonitorOnly.load(std::memory_order_relaxed) },
         { "ecoMode",              state->ecoMode.load(std::memory_order_relaxed) },
         { "beautyAmount",         state->beautyAmount.load(std::memory_order_relaxed) },
+        { "contourAmt",           state->contourAmt.load(std::memory_order_relaxed) },
+        { "harmonicSculptAmt",    state->harmonicSculptAmt.load(std::memory_order_relaxed) },
+        { "deHarshAmt",           state->deHarshAmt.load(std::memory_order_relaxed) },
+        { "parallelGlueAmt",      state->parallelGlueAmt.load(std::memory_order_relaxed) },
+        { "backingHeadroomDb",    state->backingHeadroomDb.load(std::memory_order_relaxed) },
+        { "freezeAbxGain",        state->freezeAbxGain.load(std::memory_order_relaxed) },
         { "wdfEqEnabled",         state->wdfEqEnabled.load(std::memory_order_relaxed) },
         { "molecularClip",        state->molecularClip.load(std::memory_order_relaxed) },
         { "voiceLoopState",       state->voiceLoopState.load(std::memory_order_relaxed) }
@@ -163,6 +175,17 @@ inline void SaveSharedStateToConfig(const SharedState* state) {
     if (ofs.is_open()) {
         ofs << j.dump(2);
     }
+}
+
+inline void SaveLiveTrackingChain(SharedState* state) {
+    if (!state) return;
+    SaveSharedStateToConfig(state);
+    wchar_t* appData = nullptr;
+    if (!SUCCEEDED(SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, nullptr, &appData))) return;
+    const std::wstring dir = std::wstring(appData) + L"\\StoneridgeDSP";
+    CoTaskMemFree(appData);
+    CreateDirectoryW(dir.c_str(), nullptr);
+    CopyFileW(GetConfigFilePath().c_str(), (dir + L"\\live_tracking_chain.json").c_str(), FALSE);
 }
 
 } // namespace stoneridge
