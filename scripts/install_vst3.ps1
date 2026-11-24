@@ -8,11 +8,13 @@ if (-not (Test-Path $src)) {
 }
 $local = Join-Path $env:LOCALAPPDATA "Programs\Common\VST3\StoneridgeVocalChain_vst3.vst3"
 New-Item -ItemType Directory -Force -Path (Split-Path $local) | Out-Null
+if (Test-Path $local) { Remove-Item $local -Recurse -Force }
 Copy-Item $src $local -Recurse -Force
 Write-Host "Installed $local"
 try {
     $common = Join-Path $env:COMMONPROGRAMFILES "VST3\StoneridgeVocalChain_vst3.vst3"
     New-Item -ItemType Directory -Force -Path (Split-Path $common) -ErrorAction Stop | Out-Null
+    if (Test-Path $common) { Remove-Item $common -Recurse -Force -ErrorAction Stop }
     Copy-Item $src $common -Recurse -Force -ErrorAction Stop
     Write-Host "Installed $common"
 } catch {
