@@ -45,18 +45,25 @@ function Get-UsbSuspendIndex([string]$Which) {
 }
 
 function Show-DpcSummary([string]$Etl) {
+    if (-not (Test-Path $Etl)) {
+        Write-Warning "DPC ETL file was not created at $Etl."
+        return
+    }
     $xperf = Get-Command xperf.exe -ErrorAction SilentlyContinue
     if (-not $xperf) {
         Write-Host "DPC ETL saved. xperf.exe is not on PATH, so stacks over 500 us were not decoded."
         return
     }
+    $prevPref = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
     $dump = & xperf.exe -i $Etl -a dpcisr 2>&1 | Out-String
+    $ErrorActionPreference = $prevPref
     $hits = @()
     foreach ($line in ($dump -split "`r?`n")) {
         if ($line -match "(\d+)\s+us" -and [int]$Matches[1] -gt 500) { $hits += $line.Trim() }
     }
     if ($hits.Count -eq 0) {
-        Write-Host "No DPC stacks over 500 us in the 15 s AudioGlitch trace."
+        Write-Host "No DPC stacks over 500 us in the 15 s Audio trace."
     } else {
         Write-Host "DPC stacks over 500 us:"
         $hits | Select-Object -First 12 | ForEach-Object { Write-Host "  $_" }
@@ -78,9 +85,28 @@ if ($Audit -or $Enable) {
 if ($DpcTrace) {
     if (-not (Test-IsAdmin)) { Write-Error "DpcTrace requires an elevated shell."; exit 1 }
     $etl = Join-Path $backupDir "audioglitch.etl"
-    wpr.exe -start AudioGlitch
+    Remove-Item $etl -Force -ErrorAction SilentlyContinue
+    $profileName = "Audio"
+    $prevPref = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    & wpr.exe -start $profileName
+    if ($LASTEXITCODE -ne 0) {
+        $profileName = "CPU"
+        & wpr.exe -start $profileName
+    }
+    $startCode = $LASTEXITCODE
+    $ErrorActionPreference = $prevPref
+    if ($startCode -ne 0) {
+        Write-Error "wpr.exe failed to start profile '$profileName' (exit $startCode)."
+        exit 1
+    }
+    Write-Host "Recording 15 s WPR '$profileName' DPC trace..."
     Start-Sleep -Seconds 15
-    wpr.exe -stop $etl
+    & wpr.exe -stop $etl
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "wpr.exe -stop failed (exit $LASTEXITCODE)."
+        exit 1
+    }
     Write-Host "DPC trace written to $etl"
     Show-DpcSummary $etl
 }

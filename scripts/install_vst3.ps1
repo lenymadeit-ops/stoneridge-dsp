@@ -12,8 +12,8 @@ Copy-Item $src $local -Recurse -Force
 Write-Host "Installed $local"
 try {
     $common = Join-Path $env:COMMONPROGRAMFILES "VST3\StoneridgeVocalChain_vst3.vst3"
-    New-Item -ItemType Directory -Force -Path (Split-Path $common) | Out-Null
-    Copy-Item $src $common -Recurse -Force
+    New-Item -ItemType Directory -Force -Path (Split-Path $common) -ErrorAction Stop | Out-Null
+    Copy-Item $src $common -Recurse -Force -ErrorAction Stop
     Write-Host "Installed $common"
 } catch {
     Write-Host "Program Files VST3 copy needs an elevated shell: $($_.Exception.Message)"

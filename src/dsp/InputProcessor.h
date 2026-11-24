@@ -2,15 +2,14 @@
 
 #include "dsp/Em91cuCalibration.h"
 #include "vocal/Adaa2MolecularShaper.h"
+#include "vocal/AnalogRack.h"
 #include "vocal/LoudnessMatcher.h"
 #include "vocal/PsychoacousticBeauty.h"
-#include "vocal/MicLocker.h"
-#include "vocal/PreampAndConsole.h"
-#include "vocal/VocalDynamics.h"
 
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <vector>
 
 namespace stoneridge {
 
@@ -61,6 +60,7 @@ struct InputDspParams {
     float deHarshAmt               = 1.0f;
     float parallelGlueAmt          = 0.15f;
     bool  ultrasonicLpfEnabled     = true;  // Auto 22 kHz 4th-order LPF at >=88.2 kHz
+    bool  ecoMode                  = false; // Caps AnalogRack oversampling at 2x
 };
 
 struct InputDspTelemetry {
@@ -117,6 +117,18 @@ public:
         if (!dst || n == 0) return;
         const uint32_t count = std::min<uint32_t>(n, static_cast<uint32_t>(m_rawScratch.size()));
         for (uint32_t i = 0; i < count; ++i) dst[i] = m_rawScratch[i];
+    }
+
+    // Level-matched raw audition tap from the last block (max 2048). Monitor A/B only.
+    void CopyMonitorAuditionTap(float* dstL, float* dstR, uint32_t n) const noexcept {
+        if (n == 0) return;
+        const uint32_t count = std::min<uint32_t>(n, static_cast<uint32_t>(m_monAuditionScratch.size()));
+        if (dstL) {
+            for (uint32_t i = 0; i < count; ++i) dstL[i] = m_monAuditionScratch[i];
+        }
+        if (dstR) {
+            for (uint32_t i = 0; i < count; ++i) dstR[i] = m_monAuditionScratchR[i];
+        }
     }
 
     static void EnableDenormalProtection() noexcept;
@@ -228,14 +240,16 @@ private:
     float       m_cachedCalibStrength = -1.0f;
     AdaaClipper m_clipper;
     vocal::LoudnessMatcher   m_loudnessMatcher;
-    vocal::Adaa2MolecularShaper m_molecular;
-    vocal::PsychoacousticBeauty m_beauty;
-    vocal::MicLockerStage    m_micLocker;
-    vocal::PreampStage       m_preampStage;
-    vocal::Fet1176Stage      m_fet1176;
-    vocal::OptoLa2aT4bStage  m_optoLa2a;
-    vocal::ConsoleEqStage    m_consoleEq;
-    std::array<float, 2048>  m_rawScratch{};
+    std::array<vocal::Adaa2MolecularShaper, 2> m_molecular;
+    std::array<vocal::PsychoacousticBeauty, 2> m_beauty;
+    vocal::AnalogRack        m_analogRack;
+    float                    m_molDriveEnv = 0.0f;
+    float                    m_molMix      = 0.0f;
+    std::vector<float>       m_rawScratch;
+    std::vector<float>       m_rawScratchR;
+    std::vector<float>       m_monAuditionScratch;
+    std::vector<float>       m_monAuditionScratchR;
+    std::vector<float>       m_preDynScratch;
 
     // 2-second Room Noise & 50/60 Hz Goertzel calibrator
     bool            m_learnActive        = false;

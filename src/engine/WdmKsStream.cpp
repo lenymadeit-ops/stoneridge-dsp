@@ -479,6 +479,7 @@ bool WdmKsStream::CreateBuffers(uint32_t bufferSize,
     m_inputDsp.Prepare(m_sampleRate, 2);
     m_controlRoom.Prepare(m_sampleRate);
     m_dacConditioner.Prepare(m_sampleRate);
+    m_auditionCtx.Prepare(m_sampleRate);
     m_captureAsrc.Prepare(m_sampleRate, m_bufferSize);
     m_captureAsrc.SetTargetFill(static_cast<double>(std::max<size_t>(
         static_cast<size_t>(m_bufferSize) * 2,
@@ -823,7 +824,8 @@ void WdmKsStream::AudioThreadMain() {
             inL, inR,
             m_asioOut[0][doubleBufIdx].data(), m_asioOut[1][doubleBufIdx].data(),
             m_workOut[0].data(), m_workOut[1].data(),
-            m_bufferSize, m_sampleRate, samplePos, nowNs, doubleBufIdx, m_callbacks, &m_controlRoom);
+            m_bufferSize, m_sampleRate, samplePos, nowNs, doubleBufIdx, m_callbacks,
+            &m_controlRoom, &m_auditionCtx);
 
         // 4. ITU-R BS.1770-4 True-Peak ISP Guard + TPDF Dither / 96kHz Noise Shaper -> Submit Render IRP
         const bool ispOn = !m_sharedState || m_sharedState->dacIspGuardEnabled.load(std::memory_order_relaxed);

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(StoneridgeASIO VERSION 7.0.0 LANGUAGES CXX)
+project(StoneridgeASIO VERSION 7.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -55,13 +55,22 @@ add_library(StoneridgeCore STATIC
     src/dsp/Em91cuCalibration.h
     src/dsp/InputProcessor.cpp
     src/dsp/InputProcessor.h
+    src/vocal/Adaa2MolecularCoeffs.h
+    src/vocal/Adaa2MolecularShaper.h
+    src/vocal/AnalogRack.h
     src/vocal/La2aCalibration.h
+    src/vocal/La2aGrayBoxWeights.h
     src/vocal/LoudnessMatcher.h
     src/vocal/MicLocker.h
     src/vocal/MicLockerCurves.h
     src/vocal/Oversampler.h
     src/vocal/PreampAndConsole.h
+    src/vocal/PsychoacousticBeauty.h
+    src/vocal/SimdKernels.h
+    src/vocal/TubeAndRailPhysics.h
     src/vocal/VocalDynamics.h
+    src/vocal/VoiceLoopBuffer.h
+    src/vocal/WdfPultecEq.h
     src/engine/AdaptiveDriftResampler.h
     src/engine/AsioHostBridge.h
     src/engine/AudioFormatConvert.h
@@ -209,7 +218,9 @@ if(STONERIDGE_BUILD_PLUGIN AND EXISTS "${STONERIDGE_SONORE_SDK}/CMakeLists.txt")
         SOURCES plugin/VocalChainPlugin.cpp
         VST3 StoneridgeVocalChain_vst3
         CLAP StoneridgeVocalChain_clap
+        VERSION ${PROJECT_VERSION}
         UI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/plugin/ui"
+        UI_ENTRY index.html
     )
     if(TARGET StoneridgeVocalChain_objects)
         target_include_directories(StoneridgeVocalChain_objects PRIVATE
@@ -225,7 +236,7 @@ if(STONERIDGE_BUILD_PLUGIN AND EXISTS "${STONERIDGE_SONORE_SDK}/CMakeLists.txt")
         UI_ENTRY index.html
         NAME "Stoneridge Vocal Chain"
         BUNDLE_ID com.stoneridge.vocalchain.standalone
-        VERSION 7.0.0
+        VERSION ${PROJECT_VERSION}
     )
     if(TARGET StoneridgeVocalChainStandalone)
         target_include_directories(StoneridgeVocalChainStandalone PRIVATE
@@ -239,5 +250,6 @@ if(STONERIDGE_BUILD_PLUGIN AND EXISTS "${STONERIDGE_SONORE_SDK}/CMakeLists.txt")
             ${CMAKE_CURRENT_SOURCE_DIR}/src
             ${CMAKE_CURRENT_SOURCE_DIR})
         target_link_libraries(StoneridgeVocalChainRt PRIVATE StoneridgeCore)
+        add_test(NAME VocalChainRt COMMAND StoneridgeVocalChainRt)
     endif()
 endif()

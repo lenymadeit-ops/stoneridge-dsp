@@ -1,4 +1,7 @@
+#include "dsp/ControlRoomMonitor.h"
+#include "dsp/DacConditioner.h"
 #include "dsp/InputProcessor.h"
+#include "plugin/VocalChainPresets.h"
 #include "vocal/Adaa2MolecularShaper.h"
 #include "vocal/La2aGrayBoxWeights.h"
 #include "vocal/PsychoacousticBeauty.h"
@@ -140,4 +143,176 @@ TEST_CASE("v7 voice loop records and plays without growing", "[v7][loop]") {
     loop.Process(y);
     REQUIRE(std::fabs(y - 0.0f) >= 0.0f);
     REQUIRE(loop.State() == stoneridge::vocal::VoiceLoopState::Looping);
+}
+
+TEST_CASE("v7 ControlRoomMonitor FDN tail and Spagnol spatial externalizer", "[v7][monitor]") {
+    stoneridge::ControlRoomMonitor mon;
+    mon.Prepare(48000.0);
+
+    stoneridge::ControlRoomParams mp{};
+    mp.directMonitorMix    = 1.0f;
+    mp.monitorReverbAmount = 0.70f;
+    mp.crossfeedEnabled    = false;
+    mp.cueCarveEnabled     = false;
+
+    constexpr uint32_t kN = 4096;
+    std::vector<float> dawL(kN, 0.0f), dawR(kN, 0.0f);
+    std::vector<float> micL(kN, 0.0f), micR(kN, 0.0f);
+    std::vector<float> outL(kN, 0.0f), outR(kN, 0.0f);
+    micL[8] = micR[8] = 0.5f;
+
+    mon.ProcessBlock(dawL.data(), dawR.data(), micL.data(), micR.data(), outL.data(), outR.data(), kN, mp);
+
+    double tailEnergy = 0.0;
+    for (uint32_t i = 1000; i < kN; ++i) {
+        REQUIRE(std::isfinite(outL[i]));
+        REQUIRE(std::isfinite(outR[i]));
+        tailEnergy += static_cast<double>(outL[i]) * outL[i];
+    }
+    REQUIRE(tailEnergy > 1.0e-5);
+
+    mon.Reset();
+    stoneridge::ControlRoomParams xp{};
+    xp.directMonitorMix    = 0.0f;
+    xp.monitorReverbAmount = 0.0f;
+    xp.crossfeedEnabled    = true;
+    for (uint32_t i = 0; i < 1024; ++i) {
+        dawL[i] = 0.25f * std::sin(2.0f * 3.14159265f * 350.0f * static_cast<float>(i) / 48000.0f);
+        dawR[i] = 0.0f;
+    }
+    mon.ProcessBlock(dawL.data(), dawR.data(), nullptr, nullptr, outL.data(), outR.data(), 1024u, xp);
+
+    double crossR = 0.0;
+    for (uint32_t i = 256; i < 1024; ++i) {
+        REQUIRE(std::isfinite(outR[i]));
+        crossR += static_cast<double>(outR[i]) * outR[i];
+    }
+    REQUIRE(crossR > 1.0e-4);
+}
+
+TEST_CASE("v7 stereo independence and stereo-linked dynamics", "[v7][stereo]") {
+    stoneridge::InputProcessor proc;
+    proc.Prepare(48000.0, 2);
+
+    constexpr uint32_t kN = 2048;
+    std::vector<float> l(kN), r(kN);
+    for (uint32_t i = 0; i < kN; ++i) {
+        const float t = static_cast<float>(i) / 48000.0f;
+        l[i] = 0.15f * std::sin(2.0f * 3.14159265f * 440.0f * t);
+        r[i] = 0.15f * std::sin(2.0f * 3.14159265f * 990.0f * t);
+    }
+
+    stoneridge::InputDspParams preset{};
+    stoneridge::ApplyVocalPreset(preset, stoneridge::PresetByIndex(0));
+    stoneridge::InputDspTelemetry tel{};
+    proc.ProcessStereo(l.data(), r.data(), kN, preset, tel);
+
+    double diffEnergy = 0.0;
+    for (uint32_t i = 512; i < kN; ++i) {
+        const double d = static_cast<double>(l[i]) - static_cast<double>(r[i]);
+        diffEnergy += d * d;
+    }
+    REQUIRE(std::sqrt(diffEnergy / 1536.0) > 0.05);
+
+    proc.Reset();
+    stoneridge::InputDspParams fetLink{};
+    fetLink.softClipEnabled    = true;
+    fetLink.fetPeakCatchAmount = 0.90f;
+    fetLink.fetRatioMode       = 1u;
+    for (uint32_t i = 0; i < kN; ++i) {
+        const float t = static_cast<float>(i) / 48000.0f;
+        l[i] = 0.70f * std::sin(2.0f * 3.14159265f * 300.0f * t);
+        r[i] = 0.05f * std::sin(2.0f * 3.14159265f * 600.0f * t);
+    }
+    proc.ProcessStereo(l.data(), r.data(), kN, fetLink, tel);
+    REQUIRE(tel.fetReductionDb < -1.0f);
+
+    double rRmsSq = 0.0;
+    for (uint32_t i = 1024; i < kN; ++i) {
+        rRmsSq += static_cast<double>(r[i]) * r[i];
+    }
+    const double rRms = std::sqrt(rRmsSq / 1024.0);
+    // Unducked 0.05 peak sine has RMS 0.03535; stereo-linked L bursts must compress R down.
+    REQUIRE(rRms < 0.030);
+}
+
+TEST_CASE("v7 DacConditioner 6-sample aligned ISP guard and zero-delay raw bypass", "[v7][dac]") {
+    stoneridge::DacConditioner dac;
+    dac.Prepare(48000.0);
+
+    constexpr uint32_t kN = 512;
+    std::vector<float> in(kN), out(kN);
+    // 12 kHz shifted by pi/4: sample points +/-0.884 < 0.90, true inter-sample peak = +1.25 (> +1.9 dBTP)
+    for (uint32_t i = 0; i < kN; ++i) {
+        in[i] = 1.25f * std::sin(2.0f * 3.14159265f * 0.25f * static_cast<float>(i) + 0.785398f);
+    }
+    stoneridge::DacTelemetry tel{};
+    dac.ProcessStereoFloat(in.data(), nullptr, out.data(), nullptr, kN, true, tel);
+    REQUIRE(tel.ispReductionDb < -0.5f);
+    REQUIRE(tel.outputTruePeakDb <= -0.35f);
+    for (float s : out) {
+        REQUIRE(std::isfinite(s));
+        REQUIRE(std::fabs(s) <= 0.985f);
+    }
+
+    dac.Reset();
+    std::vector<float> imp(64, 0.0f);
+    imp[17] = 0.5f;
+    std::vector<uint8_t> pcm(64 * 4, 0);
+    stoneridge::DacTelemetry rawTel{};
+    dac.ProcessAndConvertToPcm(imp.data(), imp.data(), pcm.data(), 64u, 2u, 16u, false, false, false, rawTel);
+    const auto* i16 = reinterpret_cast<const int16_t*>(pcm.data());
+    REQUIRE(i16[17 * 2] > 16000);
+    REQUIRE(i16[16 * 2] == 0);
+}
+
+TEST_CASE("v7 monitor-safe A/B and gate-locked LoudnessMatcher", "[v7][ab]") {
+    stoneridge::InputProcessor proc;
+    proc.Prepare(48000.0, 2);
+
+    constexpr uint32_t kN = 1024;
+    std::vector<float> l(kN), r(kN), tapL(kN), tapR(kN);
+    for (uint32_t i = 0; i < kN; ++i) {
+        const float s = 0.12f * std::sin(2.0f * 3.14159265f * 180.0f * static_cast<float>(i) / 48000.0f);
+        l[i] = r[i] = s;
+    }
+
+    stoneridge::InputDspParams p{};
+    p.gainDb                = 8.0f;
+    p.softClipEnabled       = true;
+    p.preampModel           = 1u;
+    p.preampDriveDb         = 8.0f;
+    p.abLevelMatchedBypass  = true;
+    p.abAuditionMonitorOnly = true;
+
+    stoneridge::InputDspTelemetry tel{};
+    proc.ProcessStereo(l.data(), r.data(), kN, p, tel);
+    proc.CopyMonitorAuditionTap(tapL.data(), tapR.data(), kN);
+
+    double procRms = 0.0;
+    double tapDiff = 0.0;
+    for (uint32_t i = 256; i < kN; ++i) {
+        REQUIRE(std::isfinite(tapL[i]));
+        procRms += static_cast<double>(l[i]) * l[i];
+        tapDiff += std::fabs(static_cast<double>(l[i]) - static_cast<double>(tapL[i]));
+    }
+    REQUIRE(std::sqrt(procRms / 768.0) > 0.15);
+    REQUIRE((tapDiff / 768.0) > 0.02);
+
+    stoneridge::vocal::LoudnessMatcher matcher;
+    matcher.Prepare(48000.0);
+    matcher.SetGateOpen(true);
+    for (int i = 0; i < 9600; ++i) {
+        const float x = 0.15f * std::sin(2.0f * 3.14159265f * 400.0f * static_cast<float>(i) / 48000.0f);
+        matcher.ProcessSample(x, x * 2.0f);
+    }
+    const float openGainDb = matcher.GetMatchGainDb();
+    REQUIRE(openGainDb > 4.0f);
+
+    matcher.SetGateOpen(false);
+    for (int i = 0; i < 4800; ++i) {
+        const float x = 0.15f * std::sin(2.0f * 3.14159265f * 400.0f * static_cast<float>(i) / 48000.0f);
+        matcher.ProcessSample(x, x * 0.05f);
+    }
+    REQUIRE(std::fabs(matcher.GetMatchGainDb() - openGainDb) < 0.05f);
 }

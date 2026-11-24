@@ -52,8 +52,10 @@ public:
         const float ratio = std::sqrt(std::max(m_procEnergy, 1e-9f) / std::max(m_rawEnergy, 1e-9f));
         // Clamp match gain to [-12 dB .. +18 dB] (0.251 .. 7.943)
         const float targetGain = std::clamp(ratio, 0.2511886f, 7.9432823f);
-        m_smoothedGain += (targetGain - m_smoothedGain) * m_gainAlpha;
-        m_matchGainDb = 20.0f * std::log10(std::max(m_smoothedGain, 1e-5f));
+        if (!m_freeze && m_gateOpen) {
+            m_smoothedGain += (targetGain - m_smoothedGain) * m_gainAlpha;
+            m_matchGainDb = 20.0f * std::log10(std::max(m_smoothedGain, 1e-5f));
+        }
         return m_smoothedGain;
     }
 
@@ -62,6 +64,9 @@ public:
 
     float GetMatchGainDb() const noexcept { return m_matchGainDb; }
     float GetCurrentGainLin() const noexcept { return m_smoothedGain; }
+    float GetShortTermLufs() const noexcept {
+        return -0.691f + 10.0f * std::log10(std::max(m_procEnergy, 1.0e-9f));
+    }
 
 private:
     inline float EvalKFilter(float x, float& s1z1, float& s1z2, float& s2z1, float& s2z2) const noexcept {

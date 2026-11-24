@@ -24,7 +24,12 @@ namespace {
 constexpr wchar_t kWindowClass[] = L"StoneridgePanelWindowClass";
 constexpr wchar_t kWindowTitle[] = L"Mackie EM-91CU+ - Stoneridge ASIO";
 constexpr UINT_PTR kTelemetryTimerId = 1;
+constexpr UINT_PTR kSaveDebounceTimerId = 2;
+constexpr UINT_PTR kTrayTipTimerId = 3;
 constexpr UINT kTimerIntervalMs = 33;
+constexpr UINT kEcoTimerIntervalMs = 83;
+constexpr UINT kSaveDebounceMs = 400;
+constexpr UINT kTrayTipIntervalMs = 1000;
 constexpr UINT WM_TRAY = WM_APP + 7;
 constexpr UINT ID_TRAY_MUTE = 2001;
 constexpr UINT ID_TRAY_TRACK = 2002;
@@ -32,9 +37,15 @@ constexpr UINT ID_TRAY_MIX = 2003;
 constexpr UINT ID_TRAY_RESTORE = 2004;
 constexpr UINT ID_TRAY_QUIT = 2005;
 bool g_forceTelemetry = true;
+bool g_configDirty = false;
 bool g_trayAdded = false;
 bool g_quitting = false;
 bool g_webviewStarting = false;
+
+UINT GetRestoreMsgId() noexcept {
+    static const UINT msgId = RegisterWindowMessageW(L"StoneridgePanelRestoreMsg");
+    return msgId;
+}
 
 HWND g_hwnd = nullptr;
 wil::com_ptr<ICoreWebView2Controller> g_webviewController;
@@ -84,33 +95,25 @@ std::string WideToUtf8(const std::wstring& w) {
 
 void PushTelemetryToWebView() {
     if (!g_webview || !g_state) return;
-    static float lastPeak = -999.0f;
-    static int tick = 0;
-    const float peak = g_state->inputPeakDb.load(std::memory_order_relaxed);
-    ++tick;
-    const bool streaming = g_state->streamRunning.load(std::memory_order_relaxed);
-    const bool eco = g_state->ecoMode.load(std::memory_order_relaxed);
+    static std::string lastSentPayload;
+    static uint32_t prevLearn = 0;
+
     BOOL cloaked = FALSE;
     if (g_hwnd) DwmGetWindowAttribute(g_hwnd, 14, &cloaked, sizeof(cloaked));
-    uint32_t learnSt = g_state->learnState.load(std::memory_order_relaxed);
-    static uint32_t prevLearn = 0;
+    const uint32_t learnSt = g_state->learnState.load(std::memory_order_relaxed);
     if (learnSt == static_cast<uint32_t>(stoneridge::LearnState::Completed) && prevLearn != learnSt) {
         stoneridge::SaveSharedStateToConfig(g_state);
+        g_configDirty = false;
     }
     prevLearn = learnSt;
 
     if (cloaked) return;
-    if (!g_forceTelemetry && !streaming && std::fabs(peak - lastPeak) < 0.5f) return;
-    if (!g_forceTelemetry && eco && (tick % 4) != 0 && std::fabs(peak - lastPeak) < 0.8f) return;
-    if (!g_forceTelemetry && (tick % 10) != 0 && std::fabs(peak - lastPeak) < 0.4f) return;
-    g_forceTelemetry = false;
-    lastPeak = peak;
 
     json jitterArr = json::array();
     const uint32_t writeIdx = g_state->jitterWriteIndex.load(std::memory_order_relaxed);
     for (uint32_t i = 0; i < stoneridge::kJitterHistorySize; ++i) {
         const uint32_t idx = (writeIdx + i) % stoneridge::kJitterHistorySize;
-        jitterArr.push_back(g_state->jitterHistoryUs[idx].load(std::memory_order_relaxed));
+        jitterArr.push_back(std::round(g_state->jitterHistoryUs[idx].load(std::memory_order_relaxed) * 10.0f) * 0.1f);
     }
 
     json msg = {
@@ -236,8 +239,131 @@ void PushTelemetryToWebView() {
         }}
     };
 
-    const auto wideJson = Utf8ToWide(msg.dump());
+    const std::string payload = msg.dump();
+    if (!g_forceTelemetry && payload == lastSentPayload) return;
+    g_forceTelemetry = false;
+    lastSentPayload = payload;
+
+    const auto wideJson = Utf8ToWide(payload);
     g_webview->PostWebMessageAsJson(wideJson.c_str());
+}
+
+void ApplySingleParam(const std::string& key, const json& val) {
+    if (!g_state) return;
+    if      (key == "inputGainDb")          g_state->inputGainDb.store(val.get<float>(), std::memory_order_relaxed);
+    else if (key == "inputMute")            g_state->inputMute.store(val.get<bool>(), std::memory_order_relaxed);
+    else if (key == "softClipEnabled")      g_state->softClipEnabled.store(val.get<bool>(), std::memory_order_relaxed);
+    else if (key == "audioHpfEnabled")      g_state->audioHpfEnabled.store(val.get<bool>(), std::memory_order_relaxed);
+    else if (key == "directMonitorMix")     g_state->directMonitorMix.store(val.get<float>(), std::memory_order_relaxed);
+    else if (key == "hardwarePgaGainDb") {
+        g_state->hardwarePgaGainDb.store(val.get<float>(), std::memory_order_relaxed);
+        g_state->hardwareCtrlCounter.fetch_add(1, std::memory_order_release);
+    } else if (key == "hardwareDacGainDb") {
+        g_state->hardwareDacGainDb.store(val.get<float>(), std::memory_order_relaxed);
+        g_state->hardwareCtrlCounter.fetch_add(1, std::memory_order_release);
+    } else if (key == "hardwareDacBalanceDb") {
+        g_state->hardwareDacBalanceDb.store(val.get<float>(), std::memory_order_relaxed);
+        g_state->hardwareCtrlCounter.fetch_add(1, std::memory_order_release);
+    }
+    else if (key == "autoPadOnClipEnabled")   g_state->autoPadOnClipEnabled.store(val.get<bool>(), std::memory_order_relaxed);
+    else if (key == "ultrasonicLpfEnabled")   g_state->ultrasonicLpfEnabled.store(val.get<bool>(), std::memory_order_relaxed);
+    else if (key == "driftAsrcEnabled")       g_state->driftAsrcEnabled.store(val.get<bool>(), std::memory_order_relaxed);
+    else if (key == "dacIspGuardEnabled")     g_state->dacIspGuardEnabled.store(val.get<bool>(), std::memory_order_relaxed);
+    else if (key == "dacDitherShaperEnabled") g_state->dacDitherShaperEnabled.store(val.get<bool>(), std::memory_order_relaxed);
+    else if (key == "gateEnabled")          g_state->gateEnabled.store(val.get<bool>(), std::memory_order_relaxed);
+    else if (key == "gateLookAheadEnabled") g_state->gateLookAheadEnabled.store(val.get<bool>(), std::memory_order_relaxed);
+    else if (key == "gateThresholdDb")      g_state->gateThresholdDb.store(val.get<float>(), std::memory_order_relaxed);
+    else if (key == "gateHysteresisDb")     g_state->gateHysteresisDb.store(val.get<float>(), std::memory_order_relaxed);
+    else if (key == "gateAttackMs")         g_state->gateAttackMs.store(val.get<float>(), std::memory_order_relaxed);
+    else if (key == "gateHoldMs")           g_state->gateHoldMs.store(val.get<float>(), std::memory_order_relaxed);
+    else if (key == "gateReleaseMs")        g_state->gateReleaseMs.store(val.get<float>(), std::memory_order_relaxed);
+    else if (key == "gateRangeDb")          g_state->gateRangeDb.store(val.get<float>(), std::memory_order_relaxed);
+    else if (key == "gateSidechainHpfHz")   g_state->gateSidechainHpfHz.store(val.get<float>(), std::memory_order_relaxed);
+    else if (key == "humNotchFreqHz")       g_state->humNotchFreqHz.store(val.get<float>(), std::memory_order_relaxed);
+    else if (key == "capsuleEqEnabled")     g_state->capsuleEqEnabled.store(val.get<bool>(), std::memory_order_relaxed);
+    else if (key == "capsuleCorrectionEnabled")  g_state->capsuleCorrectionEnabled.store(val.get<bool>(), std::memory_order_relaxed);
+    else if (key == "capsuleCorrectionStrength") g_state->capsuleCorrectionStrength.store(val.get<float>(), std::memory_order_relaxed);
+    else if (key == "deEsserAmount")        g_state->deEsserAmount.store(val.get<float>(), std::memory_order_relaxed);
+    else if (key == "plosiveGuardEnabled")  g_state->plosiveGuardEnabled.store(val.get<bool>(), std::memory_order_relaxed);
+    else if (key == "micModel")             g_state->micModel.store(val.get<uint32_t>(), std::memory_order_relaxed);
+    else if (key == "virtualDistanceCm")    g_state->virtualDistanceCm.store(val.get<float>(), std::memory_order_relaxed);
+    else if (key == "preampModel")          g_state->preampModel.store(val.get<uint32_t>(), std::memory_order_relaxed);
+    else if (key == "preampDriveDb")        g_state->preampDriveDb.store(val.get<float>(), std::memory_order_relaxed);
+    else if (key == "transformerIronAmount") g_state->transformerIronAmount.store(val.get<float>(), std::memory_order_relaxed);
+    else if (key == "fetPeakCatchAmount")   g_state->fetPeakCatchAmount.store(val.get<float>(), std::memory_order_relaxed);
+    else if (key == "fetRatioMode")         g_state->fetRatioMode.store(val.get<uint32_t>(), std::memory_order_relaxed);
+    else if (key == "vocalLevelerAmount")   g_state->vocalLevelerAmount.store(val.get<float>(), std::memory_order_relaxed);
+    else if (key == "consoleEqModel")       g_state->consoleEqModel.store(val.get<uint32_t>(), std::memory_order_relaxed);
+    else if (key == "consoleLowDb")         g_state->consoleLowDb.store(val.get<float>(), std::memory_order_relaxed);
+    else if (key == "consoleMidDb")         g_state->consoleMidDb.store(val.get<float>(), std::memory_order_relaxed);
+    else if (key == "consoleAirDb")         g_state->consoleAirDb.store(val.get<float>(), std::memory_order_relaxed);
+    else if (key == "dualTrackSafetyMode")  g_state->dualTrackSafetyMode.store(val.get<bool>(), std::memory_order_relaxed);
+    else if (key == "mic2RoutingMode")      g_state->mic2RoutingMode.store(val.get<uint32_t>(), std::memory_order_relaxed);
+    else if (key == "abLevelMatchedBypass") g_state->abLevelMatchedBypass.store(val.get<bool>(), std::memory_order_relaxed);
+    else if (key == "monitorReverbAmount")  g_state->monitorReverbAmount.store(val.get<float>(), std::memory_order_relaxed);
+    else if (key == "crossfeedEnabled")     g_state->crossfeedEnabled.store(val.get<bool>(), std::memory_order_relaxed);
+    else if (key == "cueCarveEnabled")      g_state->cueCarveEnabled.store(val.get<bool>(), std::memory_order_relaxed);
+    else if (key == "autopilotEnabled")     g_state->autopilotEnabled.store(val.get<bool>(), std::memory_order_relaxed);
+    else if (key == "pCorePriority")        g_state->pCorePriority.store(val.get<bool>(), std::memory_order_relaxed);
+    else if (key == "adaptiveXRunGuard")    g_state->adaptiveXRunGuard.store(val.get<bool>(), std::memory_order_relaxed);
+    else if (key == "themeMode") {
+        g_state->themeMode.store(val.get<uint32_t>(), std::memory_order_relaxed);
+        UpdateTitleBarTheme(g_hwnd);
+    } else if (key == "engineMode") {
+        g_state->engineMode.store(val.get<uint32_t>(), std::memory_order_relaxed);
+        g_state->configChangeCounter.fetch_add(1, std::memory_order_release);
+    } else if (key == "ksIrpCount") {
+        g_state->ksIrpCount.store(val.get<uint32_t>(), std::memory_order_relaxed);
+        g_state->configChangeCounter.fetch_add(1, std::memory_order_release);
+    } else if (key == "requestedBufferSize") {
+        g_state->requestedBufferSize.store(val.get<uint32_t>(), std::memory_order_relaxed);
+        g_state->configChangeCounter.fetch_add(1, std::memory_order_release);
+    } else if (key == "requestedSampleRate") {
+        g_state->requestedSampleRate.store(val.get<double>(), std::memory_order_relaxed);
+        g_state->configChangeCounter.fetch_add(1, std::memory_order_release);
+    } else if (key == "ecoMode") {
+        const bool eco = val.get<bool>();
+        g_state->ecoMode.store(eco, std::memory_order_relaxed);
+        if (g_hwnd && g_webview) {
+            SetTimer(g_hwnd, kTelemetryTimerId, eco ? kEcoTimerIntervalMs : kTimerIntervalMs, nullptr);
+        }
+    } else if (key == "beautyAmount") {
+        g_state->beautyAmount.store(val.get<float>(), std::memory_order_relaxed);
+    } else if (key == "contourAmt") {
+        g_state->contourAmt.store(val.get<float>(), std::memory_order_relaxed);
+    } else if (key == "harmonicSculptAmt") {
+        g_state->harmonicSculptAmt.store(val.get<float>(), std::memory_order_relaxed);
+    } else if (key == "deHarshAmt") {
+        g_state->deHarshAmt.store(val.get<float>(), std::memory_order_relaxed);
+    } else if (key == "parallelGlueAmt") {
+        g_state->parallelGlueAmt.store(val.get<float>(), std::memory_order_relaxed);
+    } else if (key == "backingHeadroomDb") {
+        g_state->backingHeadroomDb.store(val.get<float>(), std::memory_order_relaxed);
+    } else if (key == "voiceLoopState") {
+        g_state->voiceLoopState.store(val.get<uint32_t>(), std::memory_order_relaxed);
+    } else if (key == "abAuditionMonitorOnly") {
+        g_state->abAuditionMonitorOnly.store(val.get<bool>(), std::memory_order_relaxed);
+    } else if (key == "freezeAbxGain") {
+        g_state->freezeAbxGain.store(val.get<bool>(), std::memory_order_relaxed);
+    } else if (key == "wdfEqEnabled") {
+        g_state->wdfEqEnabled.store(val.get<bool>(), std::memory_order_relaxed);
+    } else if (key == "molecularClip") {
+        g_state->molecularClip.store(val.get<bool>(), std::memory_order_relaxed);
+    }
+}
+
+void ScheduleConfigSave() {
+    g_configDirty = true;
+    if (g_hwnd) {
+        SetTimer(g_hwnd, kSaveDebounceTimerId, kSaveDebounceMs, nullptr);
+    }
+}
+
+void FlushConfigSave() {
+    if (!g_configDirty) return;
+    if (g_hwnd) KillTimer(g_hwnd, kSaveDebounceTimerId);
+    if (g_state) stoneridge::SaveSharedStateToConfig(g_state);
+    g_configDirty = false;
 }
 
 void HandleWebMessage(const std::wstring& jsonStr) {
@@ -247,106 +373,17 @@ void HandleWebMessage(const std::wstring& jsonStr) {
         const std::string action = j.value("action", "");
         if (action == "setParam") {
             const std::string key = j.value("key", "");
-            const auto& val = j["value"];
-
-            if      (key == "inputGainDb")          g_state->inputGainDb.store(val.get<float>(), std::memory_order_relaxed);
-            else if (key == "inputMute")            g_state->inputMute.store(val.get<bool>(), std::memory_order_relaxed);
-            else if (key == "softClipEnabled")      g_state->softClipEnabled.store(val.get<bool>(), std::memory_order_relaxed);
-            else if (key == "audioHpfEnabled")      g_state->audioHpfEnabled.store(val.get<bool>(), std::memory_order_relaxed);
-            else if (key == "directMonitorMix")     g_state->directMonitorMix.store(val.get<float>(), std::memory_order_relaxed);
-            else if (key == "hardwarePgaGainDb") {
-                g_state->hardwarePgaGainDb.store(val.get<float>(), std::memory_order_relaxed);
-                g_state->hardwareCtrlCounter.fetch_add(1, std::memory_order_release);
-            } else if (key == "hardwareDacGainDb") {
-                g_state->hardwareDacGainDb.store(val.get<float>(), std::memory_order_relaxed);
-                g_state->hardwareCtrlCounter.fetch_add(1, std::memory_order_release);
-            } else if (key == "hardwareDacBalanceDb") {
-                g_state->hardwareDacBalanceDb.store(val.get<float>(), std::memory_order_relaxed);
-                g_state->hardwareCtrlCounter.fetch_add(1, std::memory_order_release);
-            }
-            else if (key == "autoPadOnClipEnabled")   g_state->autoPadOnClipEnabled.store(val.get<bool>(), std::memory_order_relaxed);
-            else if (key == "ultrasonicLpfEnabled")   g_state->ultrasonicLpfEnabled.store(val.get<bool>(), std::memory_order_relaxed);
-            else if (key == "driftAsrcEnabled")       g_state->driftAsrcEnabled.store(val.get<bool>(), std::memory_order_relaxed);
-            else if (key == "dacIspGuardEnabled")     g_state->dacIspGuardEnabled.store(val.get<bool>(), std::memory_order_relaxed);
-            else if (key == "dacDitherShaperEnabled") g_state->dacDitherShaperEnabled.store(val.get<bool>(), std::memory_order_relaxed);
-            else if (key == "gateEnabled")          g_state->gateEnabled.store(val.get<bool>(), std::memory_order_relaxed);
-            else if (key == "gateLookAheadEnabled") g_state->gateLookAheadEnabled.store(val.get<bool>(), std::memory_order_relaxed);
-            else if (key == "gateThresholdDb")      g_state->gateThresholdDb.store(val.get<float>(), std::memory_order_relaxed);
-            else if (key == "gateHysteresisDb")     g_state->gateHysteresisDb.store(val.get<float>(), std::memory_order_relaxed);
-            else if (key == "gateAttackMs")         g_state->gateAttackMs.store(val.get<float>(), std::memory_order_relaxed);
-            else if (key == "gateHoldMs")           g_state->gateHoldMs.store(val.get<float>(), std::memory_order_relaxed);
-            else if (key == "gateReleaseMs")        g_state->gateReleaseMs.store(val.get<float>(), std::memory_order_relaxed);
-            else if (key == "gateRangeDb")          g_state->gateRangeDb.store(val.get<float>(), std::memory_order_relaxed);
-            else if (key == "gateSidechainHpfHz")   g_state->gateSidechainHpfHz.store(val.get<float>(), std::memory_order_relaxed);
-            else if (key == "humNotchFreqHz")       g_state->humNotchFreqHz.store(val.get<float>(), std::memory_order_relaxed);
-            else if (key == "capsuleEqEnabled")     g_state->capsuleEqEnabled.store(val.get<bool>(), std::memory_order_relaxed);
-            else if (key == "capsuleCorrectionEnabled")  g_state->capsuleCorrectionEnabled.store(val.get<bool>(), std::memory_order_relaxed);
-            else if (key == "capsuleCorrectionStrength") g_state->capsuleCorrectionStrength.store(val.get<float>(), std::memory_order_relaxed);
-            else if (key == "deEsserAmount")        g_state->deEsserAmount.store(val.get<float>(), std::memory_order_relaxed);
-            else if (key == "plosiveGuardEnabled")  g_state->plosiveGuardEnabled.store(val.get<bool>(), std::memory_order_relaxed);
-            else if (key == "micModel")             g_state->micModel.store(val.get<uint32_t>(), std::memory_order_relaxed);
-            else if (key == "virtualDistanceCm")    g_state->virtualDistanceCm.store(val.get<float>(), std::memory_order_relaxed);
-            else if (key == "preampModel")          g_state->preampModel.store(val.get<uint32_t>(), std::memory_order_relaxed);
-            else if (key == "preampDriveDb")        g_state->preampDriveDb.store(val.get<float>(), std::memory_order_relaxed);
-            else if (key == "transformerIronAmount") g_state->transformerIronAmount.store(val.get<float>(), std::memory_order_relaxed);
-            else if (key == "fetPeakCatchAmount")   g_state->fetPeakCatchAmount.store(val.get<float>(), std::memory_order_relaxed);
-            else if (key == "fetRatioMode")         g_state->fetRatioMode.store(val.get<uint32_t>(), std::memory_order_relaxed);
-            else if (key == "vocalLevelerAmount")   g_state->vocalLevelerAmount.store(val.get<float>(), std::memory_order_relaxed);
-            else if (key == "consoleEqModel")       g_state->consoleEqModel.store(val.get<uint32_t>(), std::memory_order_relaxed);
-            else if (key == "consoleLowDb")         g_state->consoleLowDb.store(val.get<float>(), std::memory_order_relaxed);
-            else if (key == "consoleMidDb")         g_state->consoleMidDb.store(val.get<float>(), std::memory_order_relaxed);
-            else if (key == "consoleAirDb")         g_state->consoleAirDb.store(val.get<float>(), std::memory_order_relaxed);
-            else if (key == "dualTrackSafetyMode")  g_state->dualTrackSafetyMode.store(val.get<bool>(), std::memory_order_relaxed);
-            else if (key == "mic2RoutingMode")      g_state->mic2RoutingMode.store(val.get<uint32_t>(), std::memory_order_relaxed);
-            else if (key == "abLevelMatchedBypass") g_state->abLevelMatchedBypass.store(val.get<bool>(), std::memory_order_relaxed);
-            else if (key == "monitorReverbAmount")  g_state->monitorReverbAmount.store(val.get<float>(), std::memory_order_relaxed);
-            else if (key == "crossfeedEnabled")     g_state->crossfeedEnabled.store(val.get<bool>(), std::memory_order_relaxed);
-            else if (key == "cueCarveEnabled")      g_state->cueCarveEnabled.store(val.get<bool>(), std::memory_order_relaxed);
-            else if (key == "autopilotEnabled")     g_state->autopilotEnabled.store(val.get<bool>(), std::memory_order_relaxed);
-            else if (key == "pCorePriority")        g_state->pCorePriority.store(val.get<bool>(), std::memory_order_relaxed);
-            else if (key == "adaptiveXRunGuard")    g_state->adaptiveXRunGuard.store(val.get<bool>(), std::memory_order_relaxed);
-            else if (key == "themeMode") {
-                g_state->themeMode.store(val.get<uint32_t>(), std::memory_order_relaxed);
-                UpdateTitleBarTheme(g_hwnd);
-            } else if (key == "engineMode") {
-                g_state->engineMode.store(val.get<uint32_t>(), std::memory_order_relaxed);
-                g_state->configChangeCounter.fetch_add(1, std::memory_order_release);
-            } else if (key == "ksIrpCount") {
-                g_state->ksIrpCount.store(val.get<uint32_t>(), std::memory_order_relaxed);
-                g_state->configChangeCounter.fetch_add(1, std::memory_order_release);
-            } else if (key == "requestedBufferSize") {
-                g_state->requestedBufferSize.store(val.get<uint32_t>(), std::memory_order_relaxed);
-                g_state->configChangeCounter.fetch_add(1, std::memory_order_release);
-            } else if (key == "requestedSampleRate") {
-                g_state->requestedSampleRate.store(val.get<double>(), std::memory_order_relaxed);
-                g_state->configChangeCounter.fetch_add(1, std::memory_order_release);
-            } else if (key == "ecoMode") {
-                g_state->ecoMode.store(val.get<bool>(), std::memory_order_relaxed);
-            } else if (key == "beautyAmount") {
-                g_state->beautyAmount.store(val.get<float>(), std::memory_order_relaxed);
-            } else if (key == "contourAmt") {
-                g_state->contourAmt.store(val.get<float>(), std::memory_order_relaxed);
-            } else if (key == "harmonicSculptAmt") {
-                g_state->harmonicSculptAmt.store(val.get<float>(), std::memory_order_relaxed);
-            } else if (key == "deHarshAmt") {
-                g_state->deHarshAmt.store(val.get<float>(), std::memory_order_relaxed);
-            } else if (key == "parallelGlueAmt") {
-                g_state->parallelGlueAmt.store(val.get<float>(), std::memory_order_relaxed);
-            } else if (key == "backingHeadroomDb") {
-                g_state->backingHeadroomDb.store(val.get<float>(), std::memory_order_relaxed);
-            } else if (key == "voiceLoopState") {
-                g_state->voiceLoopState.store(val.get<uint32_t>(), std::memory_order_relaxed);
-            } else if (key == "abAuditionMonitorOnly") {
-                g_state->abAuditionMonitorOnly.store(val.get<bool>(), std::memory_order_relaxed);
-            } else if (key == "freezeAbxGain") {
-                g_state->freezeAbxGain.store(val.get<bool>(), std::memory_order_relaxed);
-            } else if (key == "wdfEqEnabled") {
-                g_state->wdfEqEnabled.store(val.get<bool>(), std::memory_order_relaxed);
-            } else if (key == "molecularClip") {
-                g_state->molecularClip.store(val.get<bool>(), std::memory_order_relaxed);
-            }
+            ApplySingleParam(key, j["value"]);
             g_forceTelemetry = true;
-            stoneridge::SaveSharedStateToConfig(g_state);
+            ScheduleConfigSave();
+        } else if (action == "applyPatch") {
+            if (j.contains("patch") && j["patch"].is_object()) {
+                for (auto& [k, v] : j["patch"].items()) {
+                    ApplySingleParam(k, v);
+                }
+                g_forceTelemetry = true;
+                ScheduleConfigSave();
+            }
         } else if (action == "resetXRuns") {
             g_state->xrunCount.store(0, std::memory_order_relaxed);
             g_state->maxJitterUs.store(0.0f, std::memory_order_relaxed);
@@ -485,6 +522,7 @@ void ShowTrayMenu(HWND hwnd) {
 }
 
 void EnterTray(HWND hwnd) {
+    FlushConfigSave();
     KillTimer(hwnd, kTelemetryTimerId);
     DestroyWebView();
     NOTIFYICONDATAW nid{};
@@ -499,21 +537,27 @@ void EnterTray(HWND hwnd) {
     else g_trayAdded = Shell_NotifyIconW(NIM_ADD, &nid) != FALSE;
     ShowWindow(hwnd, SW_HIDE);
     UpdateTrayTip(hwnd);
+    SetTimer(hwnd, kTrayTipTimerId, kTrayTipIntervalMs, nullptr);
 }
 
 void LeaveTray(HWND hwnd) {
+    KillTimer(hwnd, kTrayTipTimerId);
     ShowWindow(hwnd, SW_RESTORE);
     SetForegroundWindow(hwnd);
     if (!g_webview && !g_webviewStarting) {
         g_webviewStarting = true;
         InitializeWebView2(hwnd);
     }
-    const UINT interval = (g_state && g_state->ecoMode.load(std::memory_order_relaxed)) ? 83u : kTimerIntervalMs;
+    const UINT interval = (g_state && g_state->ecoMode.load(std::memory_order_relaxed)) ? kEcoTimerIntervalMs : kTimerIntervalMs;
     SetTimer(hwnd, kTelemetryTimerId, interval, nullptr);
     g_forceTelemetry = true;
 }
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    if (msg == GetRestoreMsgId()) {
+        LeaveTray(hwnd);
+        return 0;
+    }
     switch (msg) {
         case WM_SIZE:
             if (wParam == SIZE_MINIMIZED) {
@@ -541,13 +585,16 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 const bool muted = g_state->inputMute.load(std::memory_order_relaxed);
                 g_state->inputMute.store(!muted, std::memory_order_relaxed);
                 UpdateTrayTip(hwnd);
+                ScheduleConfigSave();
             } else if (LOWORD(wParam) == ID_TRAY_TRACK && g_state) {
                 g_state->requestedBufferSize.store(96u, std::memory_order_relaxed);
                 g_state->requestedSampleRate.store(48000.0, std::memory_order_relaxed);
                 g_state->configChangeCounter.fetch_add(1, std::memory_order_release);
+                ScheduleConfigSave();
             } else if (LOWORD(wParam) == ID_TRAY_MIX && g_state) {
                 g_state->requestedBufferSize.store(512u, std::memory_order_relaxed);
                 g_state->configChangeCounter.fetch_add(1, std::memory_order_release);
+                ScheduleConfigSave();
             } else if (LOWORD(wParam) == ID_TRAY_RESTORE) {
                 LeaveTray(hwnd);
             } else if (LOWORD(wParam) == ID_TRAY_QUIT) {
@@ -567,6 +614,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             if (wParam == kTelemetryTimerId) {
                 UpdateTrayTip(hwnd);
                 PushTelemetryToWebView();
+            } else if (wParam == kSaveDebounceTimerId) {
+                FlushConfigSave();
+            } else if (wParam == kTrayTipTimerId) {
+                UpdateTrayTip(hwnd);
             }
             return 0;
 
@@ -575,7 +626,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             return 0;
 
         case WM_DESTROY:
+            FlushConfigSave();
             KillTimer(hwnd, kTelemetryTimerId);
+            KillTimer(hwnd, kSaveDebounceTimerId);
+            KillTimer(hwnd, kTrayTipTimerId);
             if (g_trayAdded) {
                 NOTIFYICONDATAW nid{};
                 nid.cbSize = sizeof(nid);
@@ -597,7 +651,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
     if (HWND existing = FindWindowW(kWindowClass, nullptr)) {
-        ShowWindow(existing, SW_RESTORE);
+        PostMessageW(existing, GetRestoreMsgId(), 0, 0);
         SetForegroundWindow(existing);
         CoUninitialize();
         return 0;

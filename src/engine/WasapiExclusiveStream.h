@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/IAudioStreamBackend.h"
+#include "engine/AsioHostBridge.h"
 #include "engine/OsRealtimeTuning.h"
 #include "dsp/ControlRoomMonitor.h"
 #include "dsp/DacConditioner.h"
@@ -103,6 +104,7 @@ private:
     InputProcessor m_inputDsp;
     ControlRoomMonitor m_controlRoom;
     DacConditioner m_dacConditioner;
+    MonitorAuditionContext m_auditionCtx;
 
     std::thread           m_audioThread;
     std::atomic<bool>     m_running{false};

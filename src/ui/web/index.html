@@ -8,8 +8,6 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body data-page="track">
-  <div class="ambient-glow"></div>
-
   <main class="shell">
     <!-- Hero Header -->
     <header class="hero glass-card">
@@ -17,75 +15,95 @@
         <div class="badge-row">
           <span class="status-dot" id="deviceDot"></span>
           <span class="badge-text" id="deviceStatusText">Probing EM-91CU+ Hardware...</span>
-          <span class="pill-tag" id="formatBadge">24-bit | 44.1 kHz</span>
+          <span class="pill-tag" id="formatBadge">24-bit | 48 kHz</span>
           <span class="pill-tag pill-ok" id="monoBadge" style="display:none;">1ch Mono USB</span>
           <span class="pill-tag pill-warn" id="adcClipPill" style="display:none; cursor:pointer;" title="Hardware ADC clipped! Click to clear">ADC CLIP</span>
         </div>
-        <h1>Mackie EM-91CU+</h1>
+        <h1>Mackie EM-91CU+ <span class="ver-pill">v7.1</span></h1>
         <p class="subtitle" id="engineSubtitle">WDM-KS Direct Kernel Streaming | MMCSS Pro Audio</p>
       </div>
 
       <div class="hero-right">
         <div class="latency-callout">
-          <span class="callout-label" id="latencyBreakdown">In 2.9 | Out 8.7 ms</span>
-          <span class="callout-value" id="latencyReadout">11.6 <small>ms</small></span>
+          <span class="callout-label" id="latencyBreakdown">In 2.0 | Out 6.0 ms</span>
+          <span class="callout-value" id="latencyReadout">8.0 <small>ms</small></span>
         </div>
 
         <div class="segmented-control" id="themeSwitcher" role="group" aria-label="Appearance">
-          <button data-theme-mode="0" class="active">Auto</button>
-          <button data-theme-mode="1">Dark</button>
-          <button data-theme-mode="2">Light</button>
+          <button type="button" data-theme-mode="0" class="active">Auto</button>
+          <button type="button" data-theme-mode="1">Dark</button>
+          <button type="button" data-theme-mode="2">Light</button>
         </div>
       </div>
     </header>
 
-    <section class="utility-bar" aria-label="Session">
-      <span class="pill-tag" id="streamPill">Standby</span>
-      <button type="button" class="learn-btn compact-btn" id="abBypassBtn">A: Studio Chain</button>
-      <span class="pill-tag pill-ok" id="recordingSafe" style="display:none;">Recording Safe</span>
-      <button type="button" class="learn-btn compact-btn" id="slotABtn">Slot A</button>
-      <button type="button" class="learn-btn compact-btn" id="slotBBtn">Slot B</button>
-      <button type="button" class="learn-btn compact-btn" id="ecoBtn">ECO: OFF</button>
-      <span class="eco-dot" id="ecoDot" aria-hidden="true"></span>
-      <span class="eco-badge" id="ecoBadge">ECO SAVER ON</span>
+    <section class="utility-bar" aria-label="Session Controls">
+      <div class="utility-group">
+        <span class="pill-tag" id="streamPill">Standby</span>
+        <button type="button" class="learn-btn compact-btn" id="abBypassBtn" title="Monitor-safe level-matched A/B vs raw capsule">A: Studio Chain</button>
+        <span class="pill-tag pill-ok" id="recordingSafe">Recording Safe</span>
+      </div>
+      <div class="utility-group">
+        <div class="slot-pair">
+          <button type="button" class="learn-btn compact-btn" id="slotABtn" title="Recall Slot A (Shift+Click to save)">Slot A</button>
+          <button type="button" class="icon-btn" id="slotASaveBtn" title="Save current chain to Slot A">Save</button>
+        </div>
+        <div class="slot-pair">
+          <button type="button" class="learn-btn compact-btn" id="slotBBtn" title="Recall Slot B (Shift+Click to save)">Slot B</button>
+          <button type="button" class="icon-btn" id="slotBSaveBtn" title="Save current chain to Slot B">Save</button>
+        </div>
+        <button type="button" class="learn-btn compact-btn" id="undoBtn" title="Undo (Ctrl+Z)" disabled>Undo</button>
+        <button type="button" class="learn-btn compact-btn" id="ecoBtn">ECO: OFF</button>
+        <span class="eco-dot" id="ecoDot" aria-hidden="true"></span>
+        <span class="eco-badge" id="ecoBadge">ECO SAVER ON</span>
+      </div>
     </section>
 
-    <!-- Presets & 1-Click Room Calibration Bar -->
-    <section class="presets-bar">
+    <!-- Presets & 1-Click Calibration Bar -->
+    <section class="presets-bar glass-card">
       <div class="presets-left">
-        <span class="section-eyebrow">Vocal Chain Presets</span>
+        <div class="preset-header-row">
+          <span class="section-eyebrow">Vocal Chain Presets</span>
+          <span class="preset-readout mono" id="presetReadout">INIT | Default Patch</span>
+          <button type="button" class="preset-clear-btn" id="presetClearBtn" title="Clear active preset to INIT (honors Locks)">x</button>
+        </div>
         <div class="preset-pills" id="presetPills">
-          <button class="preset-pill" data-preset="modernPop">Modern Pop Gloss</button>
-          <button class="preset-pill" data-preset="rnb">Warm R&amp;B Velvet</button>
-          <button class="preset-pill" data-preset="rap">Punchy Rap Authority</button>
-          <button class="preset-pill" data-preset="acoustic">Intimate Acoustic</button>
-          <button class="preset-pill" data-preset="podcast">Podcast Broadcast</button>
-          <button class="preset-pill" data-preset="raw">Raw Reference</button>
+          <button type="button" class="preset-pill" data-preset="modernPop">Modern Pop Gloss</button>
+          <button type="button" class="preset-pill" data-preset="rnb">Warm R&amp;B Velvet</button>
+          <button type="button" class="preset-pill" data-preset="rap">Punchy Rap Authority</button>
+          <button type="button" class="preset-pill" data-preset="acoustic">Intimate Acoustic</button>
+          <button type="button" class="preset-pill" data-preset="podcast">Podcast Broadcast</button>
+          <button type="button" class="preset-pill" data-preset="raw">Raw Reference</button>
         </div>
         <div class="lock-pins">
-          <label><input type="checkbox" id="lockPga" checked> Lock PGA</label>
-          <label><input type="checkbox" id="lockGate" checked> Lock Gate</label>
+          <label><input type="checkbox" id="lockPga" checked /> Lock PGA</label>
+          <label><input type="checkbox" id="lockGate" checked /> Lock Gate</label>
         </div>
       </div>
 
       <div class="cal-actions">
-        <button class="learn-btn" id="autoPreampBtn" title="Speak naturally for 3 seconds to auto-calibrate Hardware ADC PGA + Digital Trim for -9 dBFS headroom">
+        <button type="button" class="learn-btn" id="autoPreampBtn" title="Speak naturally for 3 seconds to auto-calibrate Hardware ADC PGA + Digital Trim for -9 dBFS headroom">
           Auto-Level Preamp (3s)
         </button>
-        <button class="learn-btn" id="learnNoiseBtn" title="Stay silent for 2 seconds to calibrate Noise Gate + Hum Notch automatically">
+        <button type="button" class="learn-btn" id="learnNoiseBtn" title="Stay silent for 2 seconds to calibrate Noise Gate + Hum Notch automatically">
           Learn Room Noise
         </button>
       </div>
     </section>
 
     <section class="setup-strip tab-track" id="setupStrip">
-      <div class="setup-step" id="stepConnect"><span>1</span> Connect FL Studio</div>
-      <div class="setup-step" id="stepLevel"><span>2</span> 3s Auto-Level</div>
-      <div class="setup-step" id="stepNoise"><span>3</span> 2s Room Noise</div>
-      <p class="setup-hint" id="setupHint">Open FL Studio and arm the Stoneridge input to enable calibration.</p>
+      <div class="setup-top">
+        <div class="setup-steps">
+          <div class="setup-step" id="stepConnect"><span>1</span> Connect FL Studio</div>
+          <div class="setup-step" id="stepLevel"><span>2</span> 3s Auto-Level</div>
+          <div class="setup-step" id="stepNoise"><span>3</span> 2s Room Noise</div>
+        </div>
+        <button type="button" class="icon-btn" id="setupCollapseBtn">Hide Guide</button>
+      </div>
+      <p class="setup-hint" id="setupHint">Open FL Studio and arm the Stoneridge ASIO input to enable auto-calibration.</p>
     </section>
 
-    <nav class="tab-bar" id="tabBar">
+    <nav class="tab-bar" id="tabBar" role="tablist">
       <button type="button" data-tab="track" class="active">Studio Track</button>
       <button type="button" data-tab="chain">Analog Chain</button>
       <button type="button" data-tab="engine">Engine and Lab</button>
@@ -93,20 +111,19 @@
 
     <!-- Main Bento Grid -->
     <div class="bento-grid">
-      <!-- Input Stage & Hardware Codec Card -->
+      <!-- TAB 1: Input Stage & Monitor Control Room -->
       <section class="glass-card card tab-track">
         <div class="card-header">
           <div>
-            <h2>Input &amp; Hardware Preamp</h2>
-            <p class="card-sub">Silicon ADC/DAC control, ADAA1 limiter &amp; monitor</p>
+            <h2>Input &amp; Control Room</h2>
+            <p class="card-sub">Silicon ADC/DAC, Spagnol monitor room &amp; Voice Loop Audition</p>
           </div>
           <div class="header-actions">
             <span class="pill-tag pill-warn" id="hwMuteBadge" style="display:none;">HW Muted</span>
-            <button class="mute-btn" id="muteBtn">Mute</button>
+            <button type="button" class="mute-btn" id="muteBtn">Mute</button>
           </div>
         </div>
 
-        <!-- Live Meter -->
         <div class="meter-block">
           <div class="meter-labels">
             <span>Input Level (5 Hz DC-Blocked)</span>
@@ -118,7 +135,6 @@
           </div>
         </div>
 
-        <!-- Hardware Codec PGA & DAC Sliders (direct WDM-KS 0.5 dB silicon control) -->
         <div class="sliders-grid" id="hwCodecGrid">
           <div class="control-row" id="hwPgaRow">
             <div class="control-head">
@@ -164,6 +180,14 @@
 
           <div class="control-row">
             <div class="control-head">
+              <label for="trackBeautySlider">Vocal Beauty Macro</label>
+              <span class="value-pill mono" id="trackBeautyVal">0%</span>
+            </div>
+            <input type="range" id="trackBeautySlider" min="0" max="100" step="1" value="0" data-default="0" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
               <label for="directMonitor">Direct Monitor</label>
               <span class="value-pill mono" id="directMonitorVal">0%</span>
             </div>
@@ -172,7 +196,15 @@
 
           <div class="control-row">
             <div class="control-head">
-              <label for="monitorReverb">Comfort Chamber (Mon)</label>
+              <label for="backingHeadroom">Backing Headroom</label>
+              <span class="value-pill mono" id="backingHeadroomVal">0.0 dB</span>
+            </div>
+            <input type="range" id="backingHeadroom" min="-12" max="0" step="0.5" value="0" data-default="0" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <label for="monitorReverb">Comfort Chamber v2</label>
               <span class="value-pill mono" id="monitorReverbVal">0%</span>
             </div>
             <input type="range" id="monitorReverb" min="0" max="100" step="1" value="0" data-default="0" />
@@ -181,8 +213,8 @@
 
         <div class="toggle-row">
           <div>
-            <div class="toggle-title">300 us Binaural Speaker Crossfeed</div>
-            <div class="toggle-desc">Monitor-only 60-deg control-room imaging (never printed)</div>
+            <div class="toggle-title">Spagnol Control-Room Externalizer</div>
+            <div class="toggle-desc">280 us Woodworth ITD + 7.8 kHz pinna notch (monitor-only)</div>
           </div>
           <label class="apple-switch">
             <input type="checkbox" id="crossfeedToggle" />
@@ -212,48 +244,37 @@
           </label>
         </div>
 
-        <div class="voice-loop tab-track">
-          <button type="button" class="learn-btn" id="voiceRecBtn">Record 5s Phrase</button>
-          <button type="button" class="learn-btn" id="voicePlayBtn">Loop Hands-Free</button>
-          <button type="button" class="learn-btn" id="voiceStopBtn">Stop</button>
+        <div class="voice-loop-card">
+          <div class="voice-loop-head">
+            <strong>5s Voice Loop Audition</strong>
+            <span class="pill-tag" id="voiceLoopPill">Standby</span>
+          </div>
+          <div class="voice-loop">
+            <button type="button" class="learn-btn compact-btn" id="voiceRecBtn">Record 5s Phrase</button>
+            <button type="button" class="learn-btn compact-btn" id="voicePlayBtn">Loop Hands-Free</button>
+            <button type="button" class="learn-btn compact-btn" id="voiceStopBtn">Stop</button>
+          </div>
         </div>
+
         <div class="wiring-card">
-          <strong>FL Studio 2-Insert Wiring</strong>
-          <p>Insert 1: Mono Mic 1 = Tap A Master | Insert 2: Mono Mic 2 = Tap B/C Safety</p>
-          <button type="button" class="learn-btn compact-btn" id="profileTrack">Tracking (96 smp / 2.0 ms)</button>
-          <button type="button" class="learn-btn compact-btn" id="profileMix">Mixing (512 smp)</button>
-          <button type="button" class="learn-btn compact-btn" id="syncPluginBtn">Sync to Plugin</button>
-        </div>
-
-        <div class="toggle-row">
-          <div>
-            <div class="toggle-title">ADAA1 Alias-Free Soft-Clipper</div>
-            <div class="toggle-desc">Antiderivative -0.3 dBFS ceiling with zero Nyquist foldback</div>
+          <div class="wiring-info">
+            <strong>FL Studio 2-Insert Wiring</strong>
+            <p>Insert 1: Mono Mic 1 = Tap A Master | Insert 2: Mono Mic 2 = Tap B/C Safety</p>
           </div>
-          <label class="apple-switch">
-            <input type="checkbox" id="softClipToggle" checked />
-            <span class="slider"></span>
-          </label>
-        </div>
-
-        <div class="toggle-row">
-          <div>
-            <div class="toggle-title">Auto-Pad PGA on ADC Clip</div>
-            <div class="toggle-desc">Steps Hardware PGA down -2.0 dB on sustained overload</div>
+          <div class="wiring-btns">
+            <button type="button" class="learn-btn compact-btn" id="profileTrack">Tracking (96 smp / 2.0 ms)</button>
+            <button type="button" class="learn-btn compact-btn" id="profileMix">Mixing (512 smp)</button>
+            <button type="button" class="learn-btn compact-btn" id="syncPluginBtn">Sync to Plugin</button>
           </div>
-          <label class="apple-switch">
-            <input type="checkbox" id="autoPadToggle" />
-            <span class="slider"></span>
-          </label>
         </div>
       </section>
 
-      <!-- Noise Gate Card -->
+      <!-- TAB 1: Noise Gate & Input Protection Card -->
       <section class="glass-card card tab-track">
         <div class="card-header">
           <div>
-            <h2>Noise Gate</h2>
-            <p class="card-sub">Sidechain HPF, hysteresis &amp; optional 1 ms look-ahead</p>
+            <h2>Noise Gate &amp; Protection</h2>
+            <p class="card-sub">Sidechain HPF, hysteresis, look-ahead &amp; ADAA ceiling</p>
           </div>
           <div class="header-actions">
             <span class="gate-state-pill" id="gateStatePill">Bypassed</span>
@@ -265,7 +286,7 @@
         </div>
 
         <div class="gate-viz-wrap">
-          <canvas id="gateCanvas" width="380" height="54"></canvas>
+          <canvas id="gateCanvas" width="380" height="58"></canvas>
         </div>
 
         <div class="meter-block">
@@ -285,6 +306,14 @@
               <span class="value-pill mono" id="gateThresholdVal">-42 dB</span>
             </div>
             <input type="range" id="gateThreshold" min="-80" max="0" step="1" value="-42" data-default="-42" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <label for="gateHysteresis">Hysteresis</label>
+              <span class="value-pill mono" id="gateHysteresisVal">4.0 dB</span>
+            </div>
+            <input type="range" id="gateHysteresis" min="0" max="12" step="0.5" value="4" data-default="4" />
           </div>
 
           <div class="control-row">
@@ -319,49 +348,55 @@
             <input type="range" id="gateRelease" min="10" max="1000" step="10" value="140" data-default="140" />
           </div>
 
-          <div class="control-row">
+          <div class="control-row span-2-inner">
             <div class="control-head">
               <label for="gateHpf">Sidechain HPF</label>
               <span class="value-pill mono" id="gateHpfVal">90 Hz</span>
             </div>
             <input type="range" id="gateHpf" min="0" max="250" step="5" value="90" data-default="90" />
           </div>
-
-          <div class="control-row">
-            <div class="control-head">
-              <label for="gateHysteresis">Gate Hysteresis</label>
-              <span class="value-pill mono" id="gateHysteresisVal">4 dB</span>
-            </div>
-            <input type="range" id="gateHysteresis" min="0" max="12" step="0.5" value="4" data-default="4" />
-          </div>
-
-          <div class="control-row">
-            <div class="control-head">
-              <label for="shieldStrength">Shield Correction Strength</label>
-              <span class="value-pill mono" id="shieldStrengthVal">85%</span>
-            </div>
-            <input type="range" id="shieldStrength" min="0" max="100" step="1" value="85" data-default="85" />
-          </div>
         </div>
 
         <div class="toggle-row">
           <div>
             <div class="toggle-title">1.0 ms Consonant Look-Ahead</div>
-            <div class="toggle-desc">Preserves fast "t"/"p" attacks (+1.0 ms input latency when on)</div>
+            <div class="toggle-desc">Preserves fast "t"/"p" attacks (+1.0 ms input latency)</div>
           </div>
           <label class="apple-switch">
             <input type="checkbox" id="gateLookAheadToggle" />
             <span class="slider"></span>
           </label>
         </div>
+
+        <div class="toggle-row">
+          <div>
+            <div class="toggle-title">ADAA1 Alias-Free Soft-Clipper</div>
+            <div class="toggle-desc">Antiderivative -0.3 dBFS ceiling with zero Nyquist foldback</div>
+          </div>
+          <label class="apple-switch">
+            <input type="checkbox" id="softClipToggle" checked />
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="toggle-row">
+          <div>
+            <div class="toggle-title">Auto-Pad PGA on ADC Clip</div>
+            <div class="toggle-desc">Steps Hardware PGA down -2.0 dB on sustained overload</div>
+          </div>
+          <label class="apple-switch">
+            <input type="checkbox" id="autoPadToggle" />
+            <span class="slider"></span>
+          </label>
+        </div>
       </section>
 
-      <!-- Studio Microphone Capture Chain Card -->
+      <!-- TAB 2: Interactive Signal Flow + Analytic Composite Curve Visualizer -->
       <section class="glass-card card span-2 tab-chain">
         <div class="card-header">
           <div>
-            <h2>Studio Capsule Capture Processing</h2>
-            <p class="card-sub">Zero-latency pre-DAW vocal conditioning &amp; safety backup</p>
+            <h2>Click-to-Inspect Analog Chain &amp; Composite Response</h2>
+            <p class="card-sub">Unified ~192 kHz oversampling domain | Shared B+ reservoir | Live analytic transfer</p>
           </div>
           <div class="telemetry-chips">
             <span class="chip mono" id="deEssChip">De-Ess: 0.0 dB</span>
@@ -371,15 +406,156 @@
           </div>
         </div>
 
-        <div class="capture-grid">
+        <div class="flow-strip" id="flowStrip">
+          <button type="button" class="flow-chip active" data-inspect="shield">
+            <span class="flow-head"><span class="flow-led" id="ledShield"></span>Shield</span>
+            <small class="flow-sub" id="subShield">Off</small>
+          </button>
+          <button type="button" class="flow-chip" data-inspect="mic">
+            <span class="flow-head"><span class="flow-led" id="ledMic"></span>Mic Locker</span>
+            <small class="flow-sub" id="subMic">Raw EM-91</small>
+          </button>
+          <button type="button" class="flow-chip" data-inspect="pre">
+            <span class="flow-head"><span class="flow-led" id="ledPre"></span>Preamp</span>
+            <small class="flow-sub" id="subPre">Bypass</small>
+          </button>
+          <button type="button" class="flow-chip" data-inspect="gate">
+            <span class="flow-head"><span class="flow-led" id="ledGate"></span>Gate/De-Ess</span>
+            <small class="flow-sub" id="subGate">Open</small>
+          </button>
+          <button type="button" class="flow-chip" data-inspect="fet">
+            <span class="flow-head"><span class="flow-led" id="ledFet"></span>1176 JFET</span>
+            <small class="flow-sub" id="subFet">0%</small>
+          </button>
+          <button type="button" class="flow-chip" data-inspect="la2a">
+            <span class="flow-head"><span class="flow-led" id="ledLa2a"></span>LA-2A</small>
+            <small class="flow-sub" id="subLa2a">0%</small>
+          </button>
+          <button type="button" class="flow-chip" data-inspect="eq">
+            <span class="flow-head"><span class="flow-led" id="ledEq"></span>Console EQ</span>
+            <small class="flow-sub" id="subEq">Bypass</small>
+          </button>
+          <button type="button" class="flow-chip" data-inspect="beauty">
+            <span class="flow-head"><span class="flow-led" id="ledBeauty"></span>Beauty</span>
+            <small class="flow-sub" id="subBeauty">0%</small>
+          </button>
+        </div>
+
+        <div class="inspector-bar">
+          <p class="flow-detail" id="flowDetail">Shield correction before the mic model. Toggle below to inspect stage settings.</p>
+          <button type="button" class="learn-btn compact-btn" id="stageQuickBypass">Toggle Stage Bypass</button>
+        </div>
+
+        <canvas id="curveCanvas" width="920" height="176"></canvas>
+
+        <div class="inspect-group" data-stage-panel="mic pre eq">
           <div class="control-row">
             <div class="control-head">
-              <label for="deEsserSlider">Dynamic De-Esser (6.5 kHz)</label>
-              <span class="value-pill mono" id="deEsserVal">0%</span>
+              <label>Flagship Microphone Locker (V1 Curve + kHz BAOAB + Triode/ADAA2)</label>
+              <span class="chip mono" id="micModelBadge">Mic: Raw</span>
             </div>
-            <input type="range" id="deEsserSlider" min="0" max="100" step="1" value="0" data-default="0" />
+            <div class="segmented-control wrap" id="micModelSelector">
+              <button type="button" data-mic="0" class="active">Raw EM-91</button>
+              <button type="button" data-mic="1">Sony C800G</button>
+              <button type="button" data-mic="2">Neumann U87 Ai</button>
+              <button type="button" data-mic="3">ELA M 251E</button>
+              <button type="button" data-mic="4">Neumann U47</button>
+              <button type="button" data-mic="5">Shure SM7B</button>
+            </div>
           </div>
 
+          <div class="engine-grid">
+            <div>
+              <div class="control-head">
+                <label>Mic Preamp Topology</label>
+                <span class="chip mono" id="preampModeBadge">Clean Bypass</span>
+              </div>
+              <div class="segmented-control wrap" id="preampModelSelector">
+                <button type="button" data-preamp="0" class="active">Clean Bypass</button>
+                <button type="button" data-preamp="1">Neve 1073</button>
+                <button type="button" data-preamp="2">API 312</button>
+                <button type="button" data-preamp="3">V76 Tube</button>
+                <button type="button" data-preamp="4">SSL 9000J</button>
+              </div>
+            </div>
+
+            <div>
+              <div class="control-head">
+                <label>Console EQ Network</label>
+                <span class="chip mono" id="consoleEqBadge">EQ: Bypass</span>
+              </div>
+              <div class="segmented-control wrap" id="consoleEqSelector">
+                <button type="button" data-eq="0" class="active">Bypass</button>
+                <button type="button" data-eq="1">Pultec EQP-1A</button>
+                <button type="button" data-eq="2">1073 Inductor</button>
+                <button type="button" data-eq="3">SSL 4000G</button>
+                <button type="button" data-eq="4">API 550A</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="sliders-grid">
+            <div class="control-row">
+              <div class="control-head">
+                <label for="virtualDistanceSlider">Virtual Mic Distance (1/r)</label>
+                <span class="value-pill mono" id="virtualDistanceVal">15 cm</span>
+              </div>
+              <input type="range" id="virtualDistanceSlider" min="5" max="35" step="1" value="15" data-default="15" />
+            </div>
+
+            <div class="control-row">
+              <div class="control-head">
+                <label for="preampDriveSlider">Preamp Drive</label>
+                <span class="value-pill mono" id="preampDriveVal">0.0 dB</span>
+              </div>
+              <input type="range" id="preampDriveSlider" min="0" max="18" step="0.5" value="0" data-default="0" />
+            </div>
+
+            <div class="control-row">
+              <div class="control-head">
+                <label for="transformerIronSlider">Transformer Iron (JA)</label>
+                <span class="value-pill mono" id="transformerIronVal">50%</span>
+              </div>
+              <input type="range" id="transformerIronSlider" min="0" max="100" step="1" value="50" data-default="50" />
+            </div>
+
+            <div class="control-row">
+              <div class="control-head">
+                <label for="consoleLowSlider">Low Weight / Pultec</label>
+                <span class="value-pill mono" id="consoleLowVal">0.0 dB</span>
+              </div>
+              <input type="range" id="consoleLowSlider" min="-6" max="6" step="0.5" value="0" data-default="0" />
+            </div>
+
+            <div class="control-row">
+              <div class="control-head">
+                <label for="consoleMidSlider">Mid Presence</label>
+                <span class="value-pill mono" id="consoleMidVal">0.0 dB</span>
+              </div>
+              <input type="range" id="consoleMidSlider" min="-6" max="6" step="0.5" value="0" data-default="0" />
+            </div>
+
+            <div class="control-row">
+              <div class="control-head">
+                <label for="consoleAirSlider">12 kHz Inductor Silk</label>
+                <span class="value-pill mono" id="consoleAirVal">0.0 dB</span>
+              </div>
+              <input type="range" id="consoleAirSlider" min="-6" max="8" step="0.5" value="0" data-default="0" />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 2: Dynamics, Shield, Mains Notch & Psychoacoustic Beauty Matrix -->
+      <section class="glass-card card tab-chain">
+        <div class="card-header">
+          <div>
+            <h2>Dynamics &amp; Capsule Shield</h2>
+            <p class="card-sub">1176 Shichman-Hodges JFET, SignalTrain LA-2A &amp; Shield</p>
+          </div>
+        </div>
+
+        <div class="capture-grid">
           <div class="control-row">
             <div class="control-head">
               <label for="fetPeakCatchSlider">1176 FET Peak Catcher</label>
@@ -393,9 +569,9 @@
               <label>1176 FET Ratio</label>
             </div>
             <div class="segmented-control" id="fetRatioSelector">
-              <button data-ratio="0" class="active">4:1 Vocal</button>
-              <button data-ratio="1">8:1 Limit</button>
-              <button data-ratio="2">British</button>
+              <button type="button" data-ratio="0" class="active">4:1 Vocal</button>
+              <button type="button" data-ratio="1">8:1 Limit</button>
+              <button type="button" data-ratio="2">British</button>
             </div>
           </div>
 
@@ -409,12 +585,28 @@
 
           <div class="control-row">
             <div class="control-head">
-              <label>Mains Hum Notch (+2nd Harmonic)</label>
+              <label for="deEsserSlider">Dynamic De-Esser (6.5 kHz)</label>
+              <span class="value-pill mono" id="deEsserVal">0%</span>
+            </div>
+            <input type="range" id="deEsserSlider" min="0" max="100" step="1" value="0" data-default="0" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <label for="shieldStrength">Shield Correction Strength</label>
+              <span class="value-pill mono" id="shieldStrengthVal">85%</span>
+            </div>
+            <input type="range" id="shieldStrength" min="0" max="100" step="1" value="85" data-default="85" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <label>Mains Hum Notch</label>
             </div>
             <div class="segmented-control" id="humNotchSelector">
-              <button data-hum="0" class="active">Off</button>
-              <button data-hum="50">50 Hz</button>
-              <button data-hum="60">60 Hz</button>
+              <button type="button" data-hum="0" class="active">Off</button>
+              <button type="button" data-hum="50">50 Hz</button>
+              <button type="button" data-hum="60">60 Hz</button>
             </div>
           </div>
         </div>
@@ -422,8 +614,8 @@
         <div class="capture-toggles">
           <div class="toggle-row compact">
             <div>
-              <div class="toggle-title">Pixel 11 Pro Capsule Correction <span class="chip mono" id="capsuleCalibBadge" style="white-space:nowrap;margin-left:6px;">Needs Sweep</span></div>
-              <div class="toggle-desc">Min-phase MEMS-referenced de-embedding (4.5 ms gated)</div>
+              <div class="toggle-title">Pixel 11 Pro Capsule Correction <span class="chip mono" id="capsuleCalibBadge">Needs Sweep</span></div>
+              <div class="toggle-desc">Min-phase MEMS-referenced de-embedding</div>
             </div>
             <label class="apple-switch">
               <input type="checkbox" id="capsuleCorrectionToggle" />
@@ -456,140 +648,92 @@
           <div class="control-row">
             <div class="control-head">
               <label>Mic 2 Stem Routing</label>
-              <button class="learn-btn compact-btn" id="abBypassBtn" title="ITU-R BS.1770 K-weighted level-matched A/B vs raw capsule">A: Studio Chain</button>
+              <span class="chip mono" id="abMonitorIndicator">Monitor-Safe Active</span>
             </div>
             <div class="segmented-control wrap" id="mic2RouteSelector">
-              <button data-route="0" class="active">Mirror</button>
-              <button data-route="1">Pre-Dyn Stem</button>
-              <button data-route="2">Raw Safety</button>
+              <button type="button" data-route="0" class="active">Mirror</button>
+              <button type="button" data-route="1">Pre-Dyn Stem</button>
+              <button type="button" data-route="2">Raw Safety</button>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- Phase 3: Legendary Preamps (Jiles-Atherton Iron) & Circuit Console EQs Card -->
-      <section class="glass-card card span-2 tab-chain">
-        <div class="flow-strip" id="flowStrip">
-          <button type="button" data-inspect="shield">Shield</button>
-          <button type="button" data-inspect="mic">Mic Locker</button>
-          <button type="button" data-inspect="pre">Preamp</button>
-          <button type="button" data-inspect="gate">Gate/De-Ess</button>
-          <button type="button" data-inspect="fet">1176 JFET</button>
-          <button type="button" data-inspect="la2a">LA-2A</button>
-          <button type="button" data-inspect="eq">Console EQ</button>
-          <button type="button" data-inspect="beauty">Beauty</button>
-        </div>
-        <p class="flow-detail" id="flowDetail">Click a block to inspect that stage.</p>
-        <canvas id="curveCanvas" width="920" height="120"></canvas>
+      <!-- TAB 2: Psychoacoustic Beauty Fine Matrix & Nonlinear Physics Switches -->
+      <section class="glass-card card tab-chain">
         <div class="card-header">
           <div>
-            <h2>Legendary Preamps &amp; Console EQ Strip</h2>
-            <div class="chain-extra">
-              <label>Beauty <input type="range" id="beautyAmount" min="0" max="1" step="0.01" value="0"></label>
+            <h2>Psychoacoustic Beauty &amp; Physics</h2>
+            <p class="card-sub">ISO 226 LUFS contour, Hilbert 2f, CTKEO &amp; WDF / ADAA2 modes</p>
+          </div>
+        </div>
+
+        <div class="sliders-grid">
+          <div class="control-row">
+            <div class="control-head">
+              <label for="beautyAmount">Vocal Beauty Macro</label>
+              <span class="value-pill mono" id="beautyAmountVal">0%</span>
             </div>
-            <p class="card-sub">4x oversampled Jiles-Atherton ferromagnetic iron &amp; circuit-derived passive/inductor EQs</p>
+            <input type="range" id="beautyAmount" min="0" max="100" step="1" value="0" data-default="0" />
           </div>
-          <div class="telemetry-chips">
-            <span class="chip mono" id="micModelBadge">Mic: Raw</span>
-            <span class="chip mono" id="preampModeBadge">Clean IC</span>
-            <span class="chip mono" id="consoleEqBadge">EQ: Bypass</span>
+
+          <div class="control-row">
+            <div class="control-head">
+              <label for="contourAmtSlider">ISO 226 Contour</label>
+              <span class="value-pill mono" id="contourAmtVal">100%</span>
+            </div>
+            <input type="range" id="contourAmtSlider" min="0" max="100" step="1" value="100" data-default="100" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <label for="harmonicSculptSlider">Hilbert 2f Chest &amp; Air</label>
+              <span class="value-pill mono" id="harmonicSculptVal">100%</span>
+            </div>
+            <input type="range" id="harmonicSculptSlider" min="0" max="100" step="1" value="100" data-default="100" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <label for="deHarshSlider">CTKEO Pharyngeal De-Harsh</label>
+              <span class="value-pill mono" id="deHarshVal">100%</span>
+            </div>
+            <input type="range" id="deHarshSlider" min="0" max="100" step="1" value="100" data-default="100" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <label for="parallelGlueSlider">NY Parallel Glue (0-25%)</label>
+              <span class="value-pill mono" id="parallelGlueVal">15%</span>
+            </div>
+            <input type="range" id="parallelGlueSlider" min="0" max="25" step="1" value="15" data-default="15" />
           </div>
         </div>
 
-        <div class="control-row" style="margin-bottom: 12px;">
-          <div class="control-head">
-            <label>Flagship Microphone Locker (Min-Phase V1 Fitted + Head-Amp)</label>
-          </div>
-          <div class="segmented-control wrap" id="micModelSelector">
-            <button data-mic="0" class="active">Raw EM-91</button>
-            <button data-mic="1">Sony C800G</button>
-            <button data-mic="2">Neumann U87 Ai</button>
-            <button data-mic="3">ELA M 251E</button>
-            <button data-mic="4">Neumann U47</button>
-            <button data-mic="5">Shure SM7B</button>
-          </div>
-        </div>
-
-        <div class="engine-grid">
+        <div class="toggle-row compact">
           <div>
-            <div class="control-head">
-              <label>Mic Preamp Topology</label>
-            </div>
-            <div class="segmented-control wrap" id="preampModelSelector">
-              <button data-preamp="0" class="active">Clean Bypass</button>
-              <button data-preamp="1">Neve 1073</button>
-              <button data-preamp="2">API 312</button>
-              <button data-preamp="3">V76 Tube</button>
-              <button data-preamp="4">SSL 9000J</button>
-            </div>
+            <div class="toggle-title">WDF Passive EQP-1A Bridge</div>
+            <div class="toggle-desc">Coupled wave-digital capacitor &amp; inductor network</div>
           </div>
-
-          <div>
-            <div class="control-head">
-              <label>Console EQ Network</label>
-            </div>
-            <div class="segmented-control wrap" id="consoleEqSelector">
-              <button data-eq="0" class="active">Bypass</button>
-              <button data-eq="1">Pultec EQP-1A</button>
-              <button data-eq="2">1073 Inductor</button>
-              <button data-eq="3">SSL 4000G</button>
-              <button data-eq="4">API 550A</button>
-            </div>
-          </div>
+          <label class="apple-switch">
+            <input type="checkbox" id="wdfEqToggle" checked />
+            <span class="slider"></span>
+          </label>
         </div>
 
-        <div class="sliders-grid" style="margin-top: 12px;">
-          <div class="control-row">
-            <div class="control-head">
-              <label for="virtualDistanceSlider">Virtual Mic Distance (1/r)</label>
-              <span class="value-pill mono" id="virtualDistanceVal">15 cm</span>
-            </div>
-            <input type="range" id="virtualDistanceSlider" min="5" max="35" step="1" value="15" data-default="15" />
+        <div class="toggle-row compact">
+          <div>
+            <div class="toggle-title">ADAA2 Acetanilide Molecular Clip</div>
+            <div class="toggle-desc">Restoring-torque antiderivative soft polish on driven vocals</div>
           </div>
-
-          <div class="control-row">
-            <div class="control-head">
-              <label for="preampDriveSlider">Preamp Drive</label>
-              <span class="value-pill mono" id="preampDriveVal">0.0 dB</span>
-            </div>
-            <input type="range" id="preampDriveSlider" min="0" max="18" step="0.5" value="0" data-default="0" />
-          </div>
-
-          <div class="control-row">
-            <div class="control-head">
-              <label for="transformerIronSlider">Transformer Iron (JA)</label>
-              <span class="value-pill mono" id="transformerIronVal">50%</span>
-            </div>
-            <input type="range" id="transformerIronSlider" min="0" max="100" step="1" value="50" data-default="50" />
-          </div>
-
-          <div class="control-row">
-            <div class="control-head">
-              <label for="consoleLowSlider">Low Weight / Pultec</label>
-              <span class="value-pill mono" id="consoleLowVal">0.0 dB</span>
-            </div>
-            <input type="range" id="consoleLowSlider" min="-6" max="6" step="0.5" value="0" data-default="0" />
-          </div>
-
-          <div class="control-row">
-            <div class="control-head">
-              <label for="consoleMidSlider">Mid Presence</label>
-              <span class="value-pill mono" id="consoleMidVal">0.0 dB</span>
-            </div>
-            <input type="range" id="consoleMidSlider" min="-6" max="6" step="0.5" value="0" data-default="0" />
-          </div>
-
-          <div class="control-row">
-            <div class="control-head">
-              <label for="consoleAirSlider">12 kHz Inductor Silk</label>
-              <span class="value-pill mono" id="consoleAirVal">0.0 dB</span>
-            </div>
-            <input type="range" id="consoleAirSlider" min="-6" max="8" step="0.5" value="0" data-default="0" />
-          </div>
+          <label class="apple-switch">
+            <input type="checkbox" id="molecularClipToggle" checked />
+            <span class="slider"></span>
+          </label>
         </div>
       </section>
 
-      <!-- Engine & Latency Card -->
+      <!-- TAB 3: Engine, Clocking, Converters, Jitter & Blind ABX -->
       <section class="glass-card card span-2 tab-engine">
         <div class="card-header">
           <div>
@@ -600,12 +744,12 @@
             <p class="card-sub">96 / 192 smp @ 48 kHz lock exact 1.000 ms USB SOF frames</p>
           </div>
           <div class="telemetry-chips">
-            <button class="learn-btn compact-btn" id="optimalPresetBtn" title="Set 48 kHz / 96 samples / 3x IRP for exact 2.000 ms Adaptive DAC lock + 24-bit ADC">Optimal EM-91CU+</button>
+            <button type="button" class="learn-btn compact-btn" id="optimalPresetBtn" title="Set 48 kHz / 96 samples / 3x IRP for exact 2.000 ms Adaptive DAC lock + 24-bit ADC">Optimal EM-91CU+</button>
             <span class="chip mono" id="irpBadge">Active IRPs: 3x</span>
             <span class="chip mono" id="driftChip">Drift: +0.0 ppm</span>
             <span class="chip mono" id="cpuChip">Audio CPU: 0.0%</span>
             <span class="chip mono" id="jitterChip">Jitter: 0 / 0 us</span>
-            <button class="chip chip-btn mono" id="xrunChip" title="Click to reset XRun counter">XRuns: 0</button>
+            <button type="button" class="chip chip-btn mono" id="xrunChip" title="Click to reset XRun counter">XRuns: 0</button>
           </div>
         </div>
 
@@ -615,8 +759,8 @@
               <label>Audio Engine</label>
             </div>
             <div class="segmented-control wrap" id="engineSelector">
-              <button data-engine="0" class="active">WDM-KS Direct</button>
-              <button data-engine="1">WASAPI Exclusive</button>
+              <button type="button" data-engine="0" class="active">WDM-KS Direct</button>
+              <button type="button" data-engine="1">WASAPI Exclusive</button>
             </div>
           </div>
 
@@ -625,24 +769,24 @@
               <label>Plugin Headroom (IRP Queue)</label>
             </div>
             <div class="segmented-control wrap" id="irpSelector">
-              <button data-irp="2">Ultra-Low (2x)</button>
-              <button data-irp="3" class="active">Balanced (3x)</button>
-              <button data-irp="4">Heavy Load (4x)</button>
+              <button type="button" data-irp="2">Ultra-Low (2x)</button>
+              <button type="button" data-irp="3" class="active">Balanced (3x)</button>
+              <button type="button" data-irp="4">Heavy Load (4x)</button>
             </div>
           </div>
 
           <div>
             <div class="control-head">
-              <label>Buffer Size (Samples) <span class="usb-sync-note" id="usbSyncHint">(1.0 ms USB Sync)</span></label>
+              <label>Buffer Size (Samples) <span class="usb-sync-note" id="usbSyncHint">(2.0 ms USB Sync)</span></label>
             </div>
             <div class="segmented-control wrap" id="bufferSelector">
-              <button data-buf="64">64</button>
-              <button data-buf="96" class="active">96 <em class="sync-dot" title="Integer 1.000 ms USB SOF aligned @ 48k">Sync</em></button>
-              <button data-buf="128">128</button>
-              <button data-buf="192">192 <em class="sync-dot" title="Integer 1.000 ms USB SOF aligned @ 48k">Sync</em></button>
-              <button data-buf="256">256</button>
-              <button data-buf="512">512</button>
-              <button data-buf="1024">1024</button>
+              <button type="button" data-buf="64">64</button>
+              <button type="button" data-buf="96" class="active">96 <em class="sync-dot" title="Integer USB SOF aligned @ 48k">Sync</em></button>
+              <button type="button" data-buf="128">128</button>
+              <button type="button" data-buf="192">192 <em class="sync-dot" title="Integer USB SOF aligned @ 48k">Sync</em></button>
+              <button type="button" data-buf="256">256</button>
+              <button type="button" data-buf="512">512</button>
+              <button type="button" data-buf="1024">1024</button>
             </div>
           </div>
 
@@ -651,11 +795,11 @@
               <label>Sample Rate (Driver-Controlled)</label>
             </div>
             <div class="segmented-control wrap" id="rateSelector">
-              <button data-rate="44100" data-bit="0" class="active">44.1 kHz</button>
-              <button data-rate="48000" data-bit="1">48 kHz</button>
-              <button data-rate="88200" data-bit="2">88.2 kHz</button>
-              <button data-rate="96000" data-bit="3">96 kHz</button>
-              <button data-rate="192000" data-bit="4">192 kHz</button>
+              <button type="button" data-rate="44100" data-bit="0">44.1 kHz</button>
+              <button type="button" data-rate="48000" data-bit="1" class="active">48 kHz</button>
+              <button type="button" data-rate="88200" data-bit="2">88.2 kHz</button>
+              <button type="button" data-rate="96000" data-bit="3">96 kHz</button>
+              <button type="button" data-rate="192000" data-bit="4">192 kHz</button>
             </div>
           </div>
         </div>
@@ -664,7 +808,7 @@
           <div class="toggle-row compact">
             <div>
               <div class="toggle-title">DAC True-Peak ISP Guard (-0.5 dBTP)</div>
-              <div class="toggle-desc">ITU-R BS.1770-4 4x limiter prevents DAC reconstruction clipping</div>
+              <div class="toggle-desc">ITU-R BS.1770-4 4x limiter prevents DAC clipping</div>
             </div>
             <label class="apple-switch">
               <input type="checkbox" id="dacIspGuardToggle" checked />
@@ -675,7 +819,7 @@
           <div class="toggle-row compact">
             <div>
               <div class="toggle-title">TPDF Dither &amp; 96 kHz Noise Shaper</div>
-              <div class="toggle-desc">24-bit TPDF + 16-bit 96 kHz psychoacoustic shaper (+19 dB SNR)</div>
+              <div class="toggle-desc">24-bit TPDF + 16-bit 96 kHz psychoacoustic shaper</div>
             </div>
             <label class="apple-switch">
               <input type="checkbox" id="dacDitherShaperToggle" checked />
@@ -686,7 +830,7 @@
           <div class="toggle-row compact">
             <div>
               <div class="toggle-title">96 kHz Ultrasonic ADC Filter (22 kHz)</div>
-              <div class="toggle-desc">Strips -68.6 dBFS modulator noise &gt;20 kHz in 96k/16b mode</div>
+              <div class="toggle-desc">Strips modulator noise above 20 kHz</div>
             </div>
             <label class="apple-switch">
               <input type="checkbox" id="ultrasonicLpfToggle" checked />
@@ -697,7 +841,7 @@
           <div class="toggle-row compact">
             <div>
               <div class="toggle-title">Async ADC &lt;-&gt; Adaptive DAC Lock (ASRC)</div>
-              <div class="toggle-desc">PI-locked 6-point resampler eliminates long-session ring trims</div>
+              <div class="toggle-desc">PI-locked resampler eliminates clock drift trims</div>
             </div>
             <label class="apple-switch">
               <input type="checkbox" id="driftAsrcToggle" checked />
@@ -711,7 +855,7 @@
             <div class="toggle-row compact">
               <div>
                 <div class="toggle-title">Dynamic Zero-Crackle IRP Autopilot</div>
-                <div class="toggle-desc">Automatically expands queue (2x -> 3x -> 4x) during sudden plugin spikes</div>
+                <div class="toggle-desc">Automatically expands queue during sudden CPU spikes</div>
               </div>
               <label class="apple-switch">
                 <input type="checkbox" id="autopilotToggle" checked />
@@ -722,7 +866,7 @@
             <div class="toggle-row compact">
               <div>
                 <div class="toggle-title">Win11 Timer Fix &amp; Core-0 DPC Avoidance</div>
-                <div class="toggle-desc">Locks 0.5 ms timer when unfocused &amp; bypasses EcoQoS</div>
+                <div class="toggle-desc">Locks 0.5 ms timer &amp; bypasses EcoQoS</div>
               </div>
               <label class="apple-switch">
                 <input type="checkbox" id="pCoreToggle" checked />
@@ -733,7 +877,7 @@
             <div class="toggle-row compact">
               <div>
                 <div class="toggle-title">Adaptive XRun Overload Guard</div>
-                <div class="toggle-desc">Notifies FL Studio if sustained CPU exceeds real-time budget</div>
+                <div class="toggle-desc">Notifies FL Studio if sustained CPU exceeds budget</div>
               </div>
               <label class="apple-switch">
                 <input type="checkbox" id="xrunGuardToggle" checked />
@@ -744,17 +888,20 @@
 
           <div class="sparkline-box">
             <div class="sparkline-label">Callback Jitter (us)</div>
-            <canvas id="jitterCanvas" width="280" height="58"></canvas>
+            <canvas id="jitterCanvas" width="320" height="76"></canvas>
           </div>
+
           <div class="abx-box">
-            <div class="sparkline-label">10-Trial Blind ABX</div>
-            <p id="abxStatus">Record a 5s phrase, then start. X is hidden. Loudness match stays frozen.</p>
-            <button type="button" class="learn-btn compact-btn" id="abxStart">Start 10 trials</button>
-            <button type="button" class="learn-btn compact-btn" id="abxHearA">Hear A</button>
-            <button type="button" class="learn-btn compact-btn" id="abxHearB">Hear B</button>
-            <button type="button" class="learn-btn compact-btn" id="abxHearX">Hear X</button>
-            <button type="button" class="learn-btn compact-btn" id="abxPickA">X is A</button>
-            <button type="button" class="learn-btn compact-btn" id="abxPickB">X is B</button>
+            <div class="sparkline-label">10-Trial Blind ABX (Monitor Loop)</div>
+            <p id="abxStatus">Record a 5s phrase or click Start. X is randomized cleanly.</p>
+            <div class="abx-controls">
+              <button type="button" class="learn-btn compact-btn" id="abxStart">Start 10 trials</button>
+              <button type="button" class="learn-btn compact-btn" id="abxHearA">Hear A</button>
+              <button type="button" class="learn-btn compact-btn" id="abxHearB">Hear B</button>
+              <button type="button" class="learn-btn compact-btn" id="abxHearX">Hear X</button>
+              <button type="button" class="learn-btn compact-btn" id="abxPickA">X is A</button>
+              <button type="button" class="learn-btn compact-btn" id="abxPickB">X is B</button>
+            </div>
             <p class="mono" id="abxScore">Score 0/10</p>
           </div>
         </div>
@@ -762,7 +909,7 @@
     </div>
   </main>
 
-  <div class="eco-toast" id="ecoToast">ECO SAVER ON</div>
+  <div class="eco-toast" id="ecoToast">ECO SAVER ON - OVERSAMPLING 2X MAX | TELEMETRY 12 HZ</div>
   <script src="app.js"></script>
 </body>
 </html>

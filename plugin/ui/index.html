@@ -1,28 +1,244 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
-<meta charset="utf-8">
-<title>Stoneridge Vocal Chain</title>
-<link rel="stylesheet" href="stoneridge-tokens.css">
-<link rel="stylesheet" href="chain.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stoneridge Vocal Chain v7.1.0</title>
+  <link rel="stylesheet" href="stoneridge-tokens.css">
+  <link rel="stylesheet" href="chain.css">
 </head>
 <body>
-<main class="shell">
-  <header>
-    <h1>Stoneridge Vocal Chain</h1>
-    <p>Same analog chain the ASIO driver prints. Load Live ASIO Tracking Chain reads the panel export.</p>
-  </header>
-  <ol class="flow">
-    <li>Shield</li>
-    <li>Mic Locker</li>
-    <li>Preamp</li>
-    <li>Gate / De-Ess</li>
-    <li>1176 JFET</li>
-    <li>LA-2A Gray-Box</li>
-    <li>Console EQ</li>
-    <li>Beauty</li>
-  </ol>
-  <p class="note">Preset 0 follows the knobs. Preset 1-6 are the producer chains. Set Preset above 0.5 and below 1 to recall live_tracking_chain.json.</p>
-</main>
+  <div class="vc-app" id="vcApp">
+    <header class="vc-header glass-card">
+      <div class="vc-brand">
+        <div class="vc-logo" aria-hidden="true">SR</div>
+        <div class="vc-title-wrap">
+          <div class="vc-title-row">
+            <h1 class="vc-title">Stoneridge Vocal Chain</h1>
+            <span class="vc-ver-pill">v7.1.0</span>
+            <span class="vc-rate-pill" id="ratePill">192k Domain</span>
+          </div>
+          <p class="vc-subtitle" id="presetReadout">INIT | Default Patch</p>
+        </div>
+      </div>
+
+      <div class="vc-header-actions">
+        <div class="vc-ab-group" role="group" aria-label="Snapshot A B compare">
+          <button type="button" class="vc-pill-btn seg-pill-btn active" id="slotABtn" title="Recall Snapshot A">Slot A</button>
+          <button type="button" class="vc-pill-btn seg-pill-btn" id="slotBBtn" title="Recall Snapshot B">Slot B</button>
+        </div>
+
+        <button type="button" class="vc-pill-btn vc-live-btn" id="liveChainBtn" title="Recall live_tracking_chain.json exported by Stoneridge ASIO">
+          <span class="vc-dot" id="liveChainDot"></span>
+          <span class="vc-btn-text">Load Live ASIO Chain</span>
+        </button>
+
+        <button type="button" class="vc-pill-btn vc-eco-btn" id="ecoBtn" aria-pressed="false" title="Toggle low-CPU UI saver mode">
+          <span class="eco-dot" id="ecoDot"></span>
+          <span class="vc-btn-text" id="ecoBtnText">ECO</span>
+        </button>
+
+        <button type="button" class="vc-pill-btn" id="presetMenuBtn" title="Open preset menu">
+          <span class="vc-btn-text" id="presetMenuLabel">Presets</span>
+        </button>
+
+        <button type="button" class="vc-pill-btn vc-clear-btn" id="clearPatchBtn" title="Reset to INIT Default Patch">x</button>
+
+        <button type="button" class="vc-pill-btn" id="themeBtn" title="Toggle Dark/Light theme">Light</button>
+      </div>
+    </header>
+
+    <section class="vc-flow-card glass-card" aria-label="8-Stage Analog Signal Flow">
+      <div class="vc-section-head">
+        <span class="vc-kicker">CLICK-TO-INSPECT SIGNAL FLOW</span>
+        <span class="vc-head-meta" id="chainStatusMeta">Preset 0 follows knobs | 6-smp BS.1770 ISP Guard</span>
+      </div>
+      <ol class="vc-flow-strip" id="flowStrip">
+        <li><button type="button" class="vc-stage-pill" data-stage="shield"><span class="stage-led"></span><span>1. Shield</span></button></li>
+        <li><button type="button" class="vc-stage-pill" data-stage="mic"><span class="stage-led"></span><span>2. Mic Locker</span></button></li>
+        <li><button type="button" class="vc-stage-pill active" data-stage="preamp"><span class="stage-led"></span><span>3. Preamp</span></button></li>
+        <li><button type="button" class="vc-stage-pill" data-stage="gate"><span class="stage-led"></span><span>4. Gate / De-Ess</span></button></li>
+        <li><button type="button" class="vc-stage-pill" data-stage="fet"><span class="stage-led"></span><span>5. 1176 JFET</span></button></li>
+        <li><button type="button" class="vc-stage-pill" data-stage="la2a"><span class="stage-led"></span><span>6. LA-2A Gray-Box</span></button></li>
+        <li><button type="button" class="vc-stage-pill" data-stage="eq"><span class="stage-led"></span><span>7. WDF EQ</span></button></li>
+        <li><button type="button" class="vc-stage-pill" data-stage="beauty"><span class="stage-led"></span><span>8. Beauty</span></button></li>
+      </ol>
+    </section>
+
+    <main class="vc-bento-grid">
+      <section class="vc-left-col">
+        <article class="glass-card vc-curve-card">
+          <div class="vc-card-head">
+            <div>
+              <h2 class="vc-card-title">Composite Vocal Response</h2>
+              <p class="vc-card-sub">WDF Pultec EQ + Air Shelf + ISO 226 Contour (20 Hz - 20 kHz)</p>
+            </div>
+            <div class="vc-oled-badges">
+              <span class="vc-oled-pill" id="ecoOledBadge" hidden>ECO SAVER ON</span>
+              <span class="vc-oled-mono" id="meterOutDb">-INF dBFS</span>
+              <span class="vc-oled-mono vc-gr-badge" id="meterGrDb">GR 0.0 dB</span>
+            </div>
+          </div>
+
+          <div class="vc-canvas-wrap">
+            <canvas id="curveCanvas" width="600" height="200" aria-label="Frequency response curve"></canvas>
+          </div>
+
+          <div class="vc-meters-row">
+            <div class="vc-meter-item">
+              <span class="vc-meter-label">OUT PEAK</span>
+              <div class="vc-meter-track"><div class="vc-meter-fill" id="outBarFill"></div></div>
+              <span class="vc-meter-val" id="outValLabel">-INF</span>
+            </div>
+            <div class="vc-meter-item">
+              <span class="vc-meter-label">DYNAMICS GR</span>
+              <div class="vc-meter-track"><div class="vc-meter-fill vc-meter-gr" id="grBarFill"></div></div>
+              <span class="vc-meter-val" id="grValLabel">0.0 dB</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="glass-card vc-inspector-card" id="inspectorCard">
+          <div class="vc-card-head">
+            <div>
+              <span class="vc-kicker" id="inspKicker">STAGE 3 INSPECTOR</span>
+              <h3 class="vc-card-title" id="inspTitle">Class-A Preamp & Transformer Iron</h3>
+            </div>
+            <button type="button" class="vc-pill-btn seg-pill-btn" id="inspResetStageBtn">Reset Stage</button>
+          </div>
+          <p class="vc-insp-desc" id="inspDesc">
+            Series Jiles-Atherton magnetic core hysteresis coupled with Koren triode grid bias recovery and 192 kHz domain ADAA2 crest saturation.
+          </p>
+          <div class="vc-insp-meta" id="inspMeta">
+            <span class="vc-chip" id="inspVoicingChip">Voicing: Transparent / Linear</span>
+            <span class="vc-chip" id="inspParamChip">Param: Input 0% (0.0 dB)</span>
+          </div>
+        </article>
+      </section>
+
+      <section class="vc-right-col">
+        <article class="glass-card vc-rack-card" data-stage-group="preamp">
+          <div class="vc-card-head">
+            <h2 class="vc-card-title">Input Staging & Drive</h2>
+            <span class="vc-kicker">ANALOG FRONTEND</span>
+          </div>
+          <div class="vc-controls-2">
+            <div class="vc-control" data-param="input" data-stage="preamp">
+              <div class="vc-ctrl-top">
+                <label for="ctrl_input">Input Drive</label>
+                <span class="vc-ctrl-val" id="val_input">0% (0.0 dB)</span>
+              </div>
+              <input id="ctrl_input" type="range" min="0" max="1" step="0.005" value="0">
+            </div>
+            <div class="vc-control" data-param="trim" data-stage="beauty">
+              <div class="vc-ctrl-top">
+                <label for="ctrl_trim">Output Trim</label>
+                <span class="vc-ctrl-val" id="val_trim">0.0 dB</span>
+              </div>
+              <input id="ctrl_trim" type="range" min="-12" max="12" step="0.1" value="0">
+            </div>
+          </div>
+        </article>
+
+        <article class="glass-card vc-rack-card" data-stage-group="fet">
+          <div class="vc-card-head">
+            <h2 class="vc-card-title">Dual-Stage Vocal Dynamics</h2>
+            <span class="vc-kicker">1176 SHICHMAN-HODGES + LA-2A CT-SSM</span>
+          </div>
+          <div class="vc-controls-2">
+            <div class="vc-control" data-param="fet" data-stage="fet">
+              <div class="vc-ctrl-top">
+                <label for="ctrl_fet">1176 JFET</label>
+                <span class="vc-ctrl-val" id="val_fet">0%</span>
+              </div>
+              <input id="ctrl_fet" type="range" min="0" max="1" step="0.005" value="0">
+              <div class="vc-ratio-row" id="ratioGroup" role="group" aria-label="1176 Ratio">
+                <button type="button" class="seg-pill-btn active" data-ratio="0">4:1</button>
+                <button type="button" class="seg-pill-btn" data-ratio="1">8:1</button>
+                <button type="button" class="seg-pill-btn" data-ratio="2">British</button>
+              </div>
+            </div>
+
+            <div class="vc-control" data-param="la2a" data-stage="la2a">
+              <div class="vc-ctrl-top">
+                <label for="ctrl_la2a">LA-2A Opto</label>
+                <span class="vc-ctrl-val" id="val_la2a">0%</span>
+              </div>
+              <input id="ctrl_la2a" type="range" min="0" max="1" step="0.005" value="0">
+              <div class="vc-sub-note">Continuous-time CdS optical cell + HA-100X iron</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="glass-card vc-rack-card" data-stage-group="eq">
+          <div class="vc-card-head">
+            <h2 class="vc-card-title">WDF Console EQ & Psychoacoustic Beauty</h2>
+            <span class="vc-kicker">PASSIVE PULTEC + ISO 226 + 2F CHEST + CTKEO</span>
+          </div>
+          <div class="vc-controls-3">
+            <div class="vc-control" data-param="low" data-stage="eq">
+              <div class="vc-ctrl-top">
+                <label for="ctrl_low">Low (92 Hz)</label>
+                <span class="vc-ctrl-val" id="val_low">0.0 dB</span>
+              </div>
+              <input id="ctrl_low" type="range" min="-6" max="6" step="0.1" value="0">
+            </div>
+
+            <div class="vc-control" data-param="air" data-stage="eq">
+              <div class="vc-ctrl-top">
+                <label for="ctrl_air">Air (12 kHz)</label>
+                <span class="vc-ctrl-val" id="val_air">0.0 dB</span>
+              </div>
+              <input id="ctrl_air" type="range" min="-6" max="8" step="0.1" value="0">
+            </div>
+
+            <div class="vc-control" data-param="beauty" data-stage="beauty">
+              <div class="vc-ctrl-top">
+                <label for="ctrl_beauty">Beauty</label>
+                <span class="vc-ctrl-val" id="val_beauty">0%</span>
+              </div>
+              <input id="ctrl_beauty" type="range" min="0" max="1" step="0.005" value="0">
+            </div>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <section class="vc-presets-card glass-card" aria-label="Producer Vocal Presets">
+      <div class="vc-section-head">
+        <span class="vc-kicker">PRODUCER PRESETS (CLICK AGAIN TO DESELECT TO INIT)</span>
+        <span class="vc-head-meta">Calibrated RMS spread &lt;= 6.5 dB | Peak &lt;= -0.3 dBFS</span>
+      </div>
+      <div class="vc-presets-grid" id="presetsGrid">
+        <button type="button" class="vc-preset-btn" data-preset="1">
+          <span class="vc-preset-name">Modern Pop Gloss</span>
+          <span class="vc-preset-tag">K67 | Neve | Pultec</span>
+        </button>
+        <button type="button" class="vc-preset-btn" data-preset="2">
+          <span class="vc-preset-name">Warm R&amp;B Velvet</span>
+          <span class="vc-preset-tag">M7 | V76 | LA-2A</span>
+        </button>
+        <button type="button" class="vc-preset-btn" data-preset="3">
+          <span class="vc-preset-name">Punchy Rap Authority</span>
+          <span class="vc-preset-tag">SM7B | API | British</span>
+        </button>
+        <button type="button" class="vc-preset-btn" data-preset="4">
+          <span class="vc-preset-name">Intimate Acoustic</span>
+          <span class="vc-preset-tag">CK12 | V76 | Soft Opto</span>
+        </button>
+        <button type="button" class="vc-preset-btn" data-preset="5">
+          <span class="vc-preset-name">Podcast Broadcast</span>
+          <span class="vc-preset-tag">K87 | Solid | Tight</span>
+        </button>
+        <button type="button" class="vc-preset-btn" data-preset="6">
+          <span class="vc-preset-name">Raw Reference</span>
+          <span class="vc-preset-tag">Flat Transparent</span>
+        </button>
+      </div>
+    </section>
+  </div>
+
+  <div class="vc-toast" id="vcToast" hidden></div>
+  <script src="app.js"></script>
 </body>
 </html>

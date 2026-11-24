@@ -1,4 +1,4 @@
-﻿# Stoneridge ASIO — Automated Industry-Standard QA & Verification Gate
+# Stoneridge ASIO - Automated Industry-Standard QA & Verification Gate
 param(
     [switch]$SkipAsan,
     [switch]$SkipAnalyze,

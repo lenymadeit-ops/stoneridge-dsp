@@ -74,7 +74,7 @@ int main() {
     IASIO* asio = nullptr;
     hr = CoCreateInstance(kClsidStoneridge, nullptr, CLSCTX_INPROC_SERVER, kClsidStoneridge,
                           reinterpret_cast<void**>(&asio));
-    CHECK(SUCCEEDED(hr) && asio != nullptr, "CoCreateInstance(StoneridgeASIO) failed — is DLL registered?");
+    CHECK(SUCCEEDED(hr) && asio != nullptr, "CoCreateInstance(StoneridgeASIO) failed - is DLL registered?");
 
     char drvName[64]{};
     asio->getDriverName(drvName);

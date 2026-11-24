@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/IAudioStreamBackend.h"
+#include "engine/AsioHostBridge.h"
 #include "dsp/ControlRoomMonitor.h"
 #include "dsp/DacConditioner.h"
 #include "dsp/InputProcessor.h"
@@ -137,6 +138,7 @@ private:
     ControlRoomMonitor     m_controlRoom;
     DacConditioner         m_dacConditioner;
     AdaptiveDriftResampler m_captureAsrc;
+    MonitorAuditionContext m_auditionCtx;
     uint32_t               m_adcClipConfirmStreak = 0;
     uint64_t               m_lastAutoPadTickMs    = 0;
 

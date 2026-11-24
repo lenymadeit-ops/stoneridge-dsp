@@ -2,12 +2,13 @@
 
 #include "asio/asio_abi.h"
 #include "dsp/ControlRoomMonitor.h"
-#include "vocal/VoiceLoopBuffer.h"
 #include "dsp/InputProcessor.h"
 #include "engine/AudioFormatConvert.h"
 #include "ipc/SharedState.h"
+#include "vocal/VoiceLoopBuffer.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 
 namespace stoneridge {
@@ -15,6 +16,38 @@ namespace stoneridge {
 struct AsioDispatchResult {
     const float* outL = nullptr;
     const float* outR = nullptr;
+};
+
+struct MonitorAuditionContext {
+    vocal::VoiceLoopBuffer voiceLoop;
+    InputProcessor         auditionDsp;
+    std::array<float, 2048> phraseBuf{};
+    std::array<float, 2048> monRawL{};
+    std::array<float, 2048> monRawR{};
+    uint32_t adcClipCleanBlocks = 0;
+    uint32_t prevLoopCmd        = 0;
+    double   preparedRate       = 0.0;
+
+    void Prepare(double sampleRate) noexcept {
+        const double rate = (sampleRate > 1000.0) ? sampleRate : 48000.0;
+        if (preparedRate != rate) {
+            voiceLoop.Prepare(rate);
+            auditionDsp.Prepare(rate, 2);
+            preparedRate = rate;
+        }
+        adcClipCleanBlocks = 0;
+        prevLoopCmd = 0;
+    }
+
+    void Reset() noexcept {
+        voiceLoop.Reset();
+        auditionDsp.Reset();
+        phraseBuf.fill(0.0f);
+        monRawL.fill(0.0f);
+        monRawR.fill(0.0f);
+        adcClipCleanBlocks = 0;
+        prevLoopCmd = 0;
+    }
 };
 
 // Shared zero-allocation host bridge between audio backends (WdmKsStream / WasapiExclusiveStream),
@@ -33,7 +66,8 @@ inline AsioDispatchResult ProcessAsioHostBlock(SharedState* sharedState,
                                                uint64_t nowNs,
                                                uint32_t doubleBufIdx,
                                                ASIOCallbacks* callbacks,
-                                               ControlRoomMonitor* ctrlRoom = nullptr) noexcept {
+                                               ControlRoomMonitor* ctrlRoom = nullptr,
+                                               MonitorAuditionContext* auditionCtx = nullptr) noexcept {
     ControlRoomParams crParams{};
     InputDspParams dspParams{};
 
@@ -53,51 +87,52 @@ inline AsioDispatchResult ProcessAsioHostBlock(SharedState* sharedState,
                 sharedState->hasHardwarePga.load(std::memory_order_relaxed));
         }
 
-        dspParams.gainDb               = sharedState->inputGainDb.load(std::memory_order_relaxed);
-        dspParams.mute                 = sharedState->inputMute.load(std::memory_order_relaxed) ||
-                                         sharedState->hardwareMuted.load(std::memory_order_relaxed);
-        dspParams.softClipEnabled      = sharedState->softClipEnabled.load(std::memory_order_relaxed);
-        dspParams.audioHpfEnabled      = sharedState->audioHpfEnabled.load(std::memory_order_relaxed);
-        dspParams.gateEnabled          = sharedState->gateEnabled.load(std::memory_order_relaxed);
-        dspParams.gateLookAheadEnabled = sharedState->gateLookAheadEnabled.load(std::memory_order_relaxed);
-        dspParams.gateThresholdDb      = sharedState->gateThresholdDb.load(std::memory_order_relaxed);
-        dspParams.gateHysteresisDb     = sharedState->gateHysteresisDb.load(std::memory_order_relaxed);
-        dspParams.gateAttackMs         = sharedState->gateAttackMs.load(std::memory_order_relaxed);
-        dspParams.gateHoldMs           = sharedState->gateHoldMs.load(std::memory_order_relaxed);
-        dspParams.gateReleaseMs        = sharedState->gateReleaseMs.load(std::memory_order_relaxed);
-        dspParams.gateRangeDb          = sharedState->gateRangeDb.load(std::memory_order_relaxed);
-        dspParams.sidechainHpfHz       = sharedState->gateSidechainHpfHz.load(std::memory_order_relaxed);
-        dspParams.humNotchFreqHz           = sharedState->humNotchFreqHz.load(std::memory_order_relaxed);
-        dspParams.capsuleEqEnabled         = sharedState->capsuleEqEnabled.load(std::memory_order_relaxed);
-        dspParams.capsuleCorrectionEnabled = sharedState->capsuleCorrectionEnabled.load(std::memory_order_relaxed);
+        dspParams.gainDb                    = sharedState->inputGainDb.load(std::memory_order_relaxed);
+        dspParams.mute                      = sharedState->inputMute.load(std::memory_order_relaxed) ||
+                                              sharedState->hardwareMuted.load(std::memory_order_relaxed);
+        dspParams.softClipEnabled           = sharedState->softClipEnabled.load(std::memory_order_relaxed);
+        dspParams.audioHpfEnabled           = sharedState->audioHpfEnabled.load(std::memory_order_relaxed);
+        dspParams.gateEnabled               = sharedState->gateEnabled.load(std::memory_order_relaxed);
+        dspParams.gateLookAheadEnabled      = sharedState->gateLookAheadEnabled.load(std::memory_order_relaxed);
+        dspParams.gateThresholdDb           = sharedState->gateThresholdDb.load(std::memory_order_relaxed);
+        dspParams.gateHysteresisDb          = sharedState->gateHysteresisDb.load(std::memory_order_relaxed);
+        dspParams.gateAttackMs              = sharedState->gateAttackMs.load(std::memory_order_relaxed);
+        dspParams.gateHoldMs                = sharedState->gateHoldMs.load(std::memory_order_relaxed);
+        dspParams.gateReleaseMs             = sharedState->gateReleaseMs.load(std::memory_order_relaxed);
+        dspParams.gateRangeDb               = sharedState->gateRangeDb.load(std::memory_order_relaxed);
+        dspParams.sidechainHpfHz            = sharedState->gateSidechainHpfHz.load(std::memory_order_relaxed);
+        dspParams.humNotchFreqHz            = sharedState->humNotchFreqHz.load(std::memory_order_relaxed);
+        dspParams.capsuleEqEnabled          = sharedState->capsuleEqEnabled.load(std::memory_order_relaxed);
+        dspParams.capsuleCorrectionEnabled  = sharedState->capsuleCorrectionEnabled.load(std::memory_order_relaxed);
         dspParams.capsuleCorrectionStrength = sharedState->capsuleCorrectionStrength.load(std::memory_order_relaxed);
-        dspParams.deEsserAmount            = sharedState->deEsserAmount.load(std::memory_order_relaxed);
-        dspParams.plosiveGuardEnabled      = sharedState->plosiveGuardEnabled.load(std::memory_order_relaxed);
-        dspParams.micModel                 = sharedState->micModel.load(std::memory_order_relaxed);
-        dspParams.virtualDistanceCm        = sharedState->virtualDistanceCm.load(std::memory_order_relaxed);
-        dspParams.preampModel              = sharedState->preampModel.load(std::memory_order_relaxed);
-        dspParams.preampDriveDb            = sharedState->preampDriveDb.load(std::memory_order_relaxed);
-        dspParams.transformerIronAmount    = sharedState->transformerIronAmount.load(std::memory_order_relaxed);
-        dspParams.fetPeakCatchAmount       = sharedState->fetPeakCatchAmount.load(std::memory_order_relaxed);
-        dspParams.fetRatioMode             = sharedState->fetRatioMode.load(std::memory_order_relaxed);
-        dspParams.vocalLevelerAmount       = sharedState->vocalLevelerAmount.load(std::memory_order_relaxed);
-        dspParams.consoleEqModel           = sharedState->consoleEqModel.load(std::memory_order_relaxed);
-        dspParams.consoleLowDb             = sharedState->consoleLowDb.load(std::memory_order_relaxed);
-        dspParams.consoleMidDb             = sharedState->consoleMidDb.load(std::memory_order_relaxed);
-        dspParams.consoleAirDb             = sharedState->consoleAirDb.load(std::memory_order_relaxed);
-        dspParams.dualTrackSafetyMode      = sharedState->dualTrackSafetyMode.load(std::memory_order_relaxed);
-        dspParams.mic2RoutingMode          = sharedState->mic2RoutingMode.load(std::memory_order_relaxed);
-        dspParams.abLevelMatchedBypass     = sharedState->abLevelMatchedBypass.load(std::memory_order_relaxed);
-        dspParams.abAuditionMonitorOnly    = sharedState->abAuditionMonitorOnly.load(std::memory_order_relaxed);
-        dspParams.freezeAbxGain            = sharedState->freezeAbxGain.load(std::memory_order_relaxed);
-        dspParams.molecularClip            = sharedState->molecularClip.load(std::memory_order_relaxed);
-        dspParams.wdfEqEnabled             = sharedState->wdfEqEnabled.load(std::memory_order_relaxed);
-        dspParams.beautyAmount             = sharedState->beautyAmount.load(std::memory_order_relaxed);
-        dspParams.contourAmt               = sharedState->contourAmt.load(std::memory_order_relaxed);
-        dspParams.harmonicSculptAmt        = sharedState->harmonicSculptAmt.load(std::memory_order_relaxed);
-        dspParams.deHarshAmt               = sharedState->deHarshAmt.load(std::memory_order_relaxed);
-        dspParams.parallelGlueAmt          = sharedState->parallelGlueAmt.load(std::memory_order_relaxed);
-        dspParams.ultrasonicLpfEnabled     = sharedState->ultrasonicLpfEnabled.load(std::memory_order_relaxed);
+        dspParams.deEsserAmount             = sharedState->deEsserAmount.load(std::memory_order_relaxed);
+        dspParams.plosiveGuardEnabled       = sharedState->plosiveGuardEnabled.load(std::memory_order_relaxed);
+        dspParams.micModel                  = sharedState->micModel.load(std::memory_order_relaxed);
+        dspParams.virtualDistanceCm         = sharedState->virtualDistanceCm.load(std::memory_order_relaxed);
+        dspParams.preampModel               = sharedState->preampModel.load(std::memory_order_relaxed);
+        dspParams.preampDriveDb             = sharedState->preampDriveDb.load(std::memory_order_relaxed);
+        dspParams.transformerIronAmount     = sharedState->transformerIronAmount.load(std::memory_order_relaxed);
+        dspParams.fetPeakCatchAmount        = sharedState->fetPeakCatchAmount.load(std::memory_order_relaxed);
+        dspParams.fetRatioMode              = sharedState->fetRatioMode.load(std::memory_order_relaxed);
+        dspParams.vocalLevelerAmount        = sharedState->vocalLevelerAmount.load(std::memory_order_relaxed);
+        dspParams.consoleEqModel            = sharedState->consoleEqModel.load(std::memory_order_relaxed);
+        dspParams.consoleLowDb              = sharedState->consoleLowDb.load(std::memory_order_relaxed);
+        dspParams.consoleMidDb              = sharedState->consoleMidDb.load(std::memory_order_relaxed);
+        dspParams.consoleAirDb              = sharedState->consoleAirDb.load(std::memory_order_relaxed);
+        dspParams.dualTrackSafetyMode       = sharedState->dualTrackSafetyMode.load(std::memory_order_relaxed);
+        dspParams.mic2RoutingMode           = sharedState->mic2RoutingMode.load(std::memory_order_relaxed);
+        dspParams.abLevelMatchedBypass      = sharedState->abLevelMatchedBypass.load(std::memory_order_relaxed);
+        dspParams.abAuditionMonitorOnly     = sharedState->abAuditionMonitorOnly.load(std::memory_order_relaxed);
+        dspParams.freezeAbxGain             = sharedState->freezeAbxGain.load(std::memory_order_relaxed);
+        dspParams.molecularClip             = sharedState->molecularClip.load(std::memory_order_relaxed);
+        dspParams.wdfEqEnabled              = sharedState->wdfEqEnabled.load(std::memory_order_relaxed);
+        dspParams.beautyAmount              = sharedState->beautyAmount.load(std::memory_order_relaxed);
+        dspParams.contourAmt                = sharedState->contourAmt.load(std::memory_order_relaxed);
+        dspParams.harmonicSculptAmt         = sharedState->harmonicSculptAmt.load(std::memory_order_relaxed);
+        dspParams.deHarshAmt                = sharedState->deHarshAmt.load(std::memory_order_relaxed);
+        dspParams.parallelGlueAmt           = sharedState->parallelGlueAmt.load(std::memory_order_relaxed);
+        dspParams.ultrasonicLpfEnabled      = sharedState->ultrasonicLpfEnabled.load(std::memory_order_relaxed);
+        dspParams.ecoMode                   = sharedState->ecoMode.load(std::memory_order_relaxed);
 
         crParams.directMonitorMix    = std::clamp(sharedState->directMonitorMix.load(std::memory_order_relaxed), 0.0f, 1.0f);
         crParams.monitorReverbAmount = std::clamp(sharedState->monitorReverbAmount.load(std::memory_order_relaxed), 0.0f, 1.0f);
@@ -147,7 +182,9 @@ inline AsioDispatchResult ProcessAsioHostBlock(SharedState* sharedState,
         sharedState->levelerReductionDb.store(telemetry.levelerReductionDb, std::memory_order_relaxed);
         sharedState->abMatchGainDb.store(telemetry.abMatchGainDb, std::memory_order_relaxed);
         sharedState->capsuleCalibrated.store(kEm91cuCalibrationMeasured, std::memory_order_relaxed);
-        static uint32_t cleanBlocks = 0;
+
+        uint32_t dummyClean = 0;
+        uint32_t& cleanBlocks = auditionCtx ? auditionCtx->adcClipCleanBlocks : dummyClean;
         if (telemetry.adcClipDetected) {
             sharedState->adcClipDetected.store(true, std::memory_order_relaxed);
             cleanBlocks = 0;
@@ -162,9 +199,9 @@ inline AsioDispatchResult ProcessAsioHostBlock(SharedState* sharedState,
     if (callbacks) {
         if (callbacks->bufferSwitchTimeInfo) {
             ASIOTime timeInfo{};
-            timeInfo.timeInfo.flags      = kSystemTimeValid | kSamplePositionValid | kSampleRateValid | kSpeedValid;
-            timeInfo.timeInfo.speed      = 1.0;
-            timeInfo.timeInfo.sampleRate = sampleRate;
+            timeInfo.timeInfo.flags             = kSystemTimeValid | kSamplePositionValid | kSampleRateValid | kSpeedValid;
+            timeInfo.timeInfo.speed             = 1.0;
+            timeInfo.timeInfo.sampleRate        = sampleRate;
             timeInfo.timeInfo.samplePosition.hi = static_cast<uint32_t>(samplePos >> 32);
             timeInfo.timeInfo.samplePosition.lo = static_cast<uint32_t>(samplePos & 0xFFFFFFFF);
             timeInfo.timeInfo.systemTime.hi     = static_cast<uint32_t>(nowNs >> 32);
@@ -176,42 +213,77 @@ inline AsioDispatchResult ProcessAsioHostBlock(SharedState* sharedState,
     }
 
     AsioDispatchResult res{ asioOutL, asioOutR };
-    static vocal::VoiceLoopBuffer voiceLoop;
-    static InputProcessor audition;
-    static double loopRate = 0.0;
-    if (loopRate != sampleRate) {
-        voiceLoop.Prepare(sampleRate);
-        audition.Prepare(sampleRate, 2);
-        loopRate = sampleRate;
-    }
-    const uint32_t loopCmd = sharedState ? sharedState->voiceLoopState.load(std::memory_order_relaxed) : 0u;
-    if (loopCmd == 1u && voiceLoop.State() != vocal::VoiceLoopState::Recording) voiceLoop.Record();
-    else if (loopCmd == 2u && voiceLoop.State() != vocal::VoiceLoopState::Looping) voiceLoop.Play();
-    else if (loopCmd == 0u && voiceLoop.State() != vocal::VoiceLoopState::Idle) voiceLoop.Stop();
 
-    const bool looping = voiceLoop.State() == vocal::VoiceLoopState::Looping;
-    if (looping && crParams.directMonitorMix < 0.2f) crParams.directMonitorMix = 0.85f;
-    const bool needCtrlRoom = (crParams.directMonitorMix > 0.001f) || crParams.crossfeedEnabled || looping
-        || voiceLoop.State() == vocal::VoiceLoopState::Recording;
-    if (needCtrlRoom && inL && monWorkL && monWorkR) {
-        float phrase[2048];
-        const uint32_t nCopy = std::min(bufferSize, 2048u);
-        const float* micL = inL;
-        const float* micR = inR ? inR : inL;
-        if (voiceLoop.State() == vocal::VoiceLoopState::Recording) {
-            inputDsp.CopyDryTap(phrase, nCopy);
-            for (uint32_t i = 0; i < nCopy; ++i) voiceLoop.Process(phrase[i]);
-        } else if (looping) {
-            for (uint32_t i = 0; i < nCopy; ++i) {
-                phrase[i] = 0.0f;
-                voiceLoop.Process(phrase[i]);
-            }
-            InputDspTelemetry auditionTel{};
-            dspParams.abLevelMatchedBypass = false;
-            audition.ProcessStereo(phrase, nullptr, nCopy, dspParams, auditionTel);
-            micL = phrase;
-            micR = phrase;
+    bool looping = false;
+    bool recording = false;
+    if (auditionCtx) {
+        if (auditionCtx->preparedRate != sampleRate) {
+            auditionCtx->Prepare(sampleRate);
         }
+        const uint32_t loopCmd = sharedState ? sharedState->voiceLoopState.load(std::memory_order_relaxed) : 0u;
+        if (loopCmd != auditionCtx->prevLoopCmd) {
+            if (loopCmd == 1u) auditionCtx->voiceLoop.Record();
+            else if (loopCmd == 2u) auditionCtx->voiceLoop.Play();
+            else auditionCtx->voiceLoop.Stop();
+            auditionCtx->prevLoopCmd = loopCmd;
+        }
+        recording = (auditionCtx->voiceLoop.State() == vocal::VoiceLoopState::Recording);
+        looping   = (auditionCtx->voiceLoop.State() == vocal::VoiceLoopState::Looping);
+    }
+
+    if (looping && crParams.directMonitorMix < 0.2f) {
+        crParams.directMonitorMix = 0.85f;
+    }
+
+    const bool needCtrlRoom = (crParams.directMonitorMix > 0.001f)
+                           || crParams.crossfeedEnabled
+                           || looping
+                           || recording;
+
+    if (needCtrlRoom && inL && monWorkL && monWorkR) {
+        const bool splitSafety = (dspParams.mic2RoutingMode != 0u) || dspParams.dualTrackSafetyMode;
+        const float* micL = inL;
+        const float* micR = (inR && !splitSafety) ? inR : inL;
+
+        if (auditionCtx) {
+            const uint32_t nCopy = std::min(bufferSize, static_cast<uint32_t>(auditionCtx->phraseBuf.size()));
+            if (recording) {
+                inputDsp.CopyDryTap(auditionCtx->phraseBuf.data(), nCopy);
+                for (uint32_t i = 0; i < nCopy; ++i) {
+                    auditionCtx->voiceLoop.Process(auditionCtx->phraseBuf[i]);
+                }
+                if (auditionCtx->voiceLoop.State() == vocal::VoiceLoopState::Looping) {
+                    looping = true;
+                    recording = false;
+                    auditionCtx->prevLoopCmd = 2u;
+                    if (sharedState) {
+                        sharedState->voiceLoopState.store(2u, std::memory_order_relaxed);
+                    }
+                }
+            } else if (looping) {
+                for (uint32_t i = 0; i < nCopy; ++i) {
+                    float s = 0.0f;
+                    auditionCtx->voiceLoop.Process(s);
+                    auditionCtx->phraseBuf[i] = s;
+                }
+                InputDspParams loopParams = dspParams;
+                // Audition DSP drives headphones only; never overwrite FL Studio buffers, so
+                // setting abAuditionMonitorOnly=false switches cleanly between A (Chain) and B (Raw).
+                loopParams.abAuditionMonitorOnly = false;
+                InputDspTelemetry auditionTel{};
+                auditionCtx->auditionDsp.ProcessMono(auditionCtx->phraseBuf.data(), nCopy, loopParams, auditionTel);
+                if (sharedState) {
+                    sharedState->abMatchGainDb.store(auditionTel.abMatchGainDb, std::memory_order_relaxed);
+                }
+                micL = auditionCtx->phraseBuf.data();
+                micR = auditionCtx->phraseBuf.data();
+            } else if (dspParams.abLevelMatchedBypass && dspParams.abAuditionMonitorOnly) {
+                inputDsp.CopyMonitorAuditionTap(auditionCtx->monRawL.data(), auditionCtx->monRawR.data(), nCopy);
+                micL = auditionCtx->monRawL.data();
+                micR = (inR && !splitSafety) ? auditionCtx->monRawR.data() : auditionCtx->monRawL.data();
+            }
+        }
+
         if (ctrlRoom) {
             ctrlRoom->ProcessBlock(asioOutL, asioOutR, micL, micR, monWorkL, monWorkR, bufferSize, crParams);
         } else {

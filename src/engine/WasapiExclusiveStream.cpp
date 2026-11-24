@@ -163,6 +163,7 @@ bool WasapiExclusiveStream::InitializeDevices(uint32_t sampleRate, uint32_t pref
         }
         // Probe exact hardware-aligned Exclusive frame count so ASIO runs 1:1 (ZERO double-callback bursts!)
         m_alignedPreferredFrames = ProbeAlignedFrames(m_renderDevice.get(), m_renderFmt, preferredBufferSize, m_minHardwareFrames);
+        m_bufferSize = m_alignedPreferredFrames;
     }
 
     if (m_captureDevice) {
@@ -228,6 +229,8 @@ bool WasapiExclusiveStream::CreateBuffers(uint32_t bufferSize,
     } else {
         m_wasapiRenderFrames = m_bufferSize;
     }
+    // Enforce strict 1:1 hardware-to-ASIO block alignment (no sample-hold padding or burst loops).
+    m_bufferSize = m_wasapiRenderFrames;
 
     bool capOk = false;
     if (m_captureDevice) {
@@ -283,6 +286,7 @@ bool WasapiExclusiveStream::CreateBuffers(uint32_t bufferSize,
     m_inputDsp.Prepare(m_sampleRate, 2);
     m_controlRoom.Prepare(m_sampleRate);
     m_dacConditioner.Prepare(m_sampleRate);
+    m_auditionCtx.Prepare(m_sampleRate);
 
     if (m_sharedState) {
         m_sharedState->captureActive.store(capOk, std::memory_order_relaxed);
@@ -475,68 +479,37 @@ void WasapiExclusiveStream::AudioThreadMain() {
             m_captureRingR.Drop(excess);
         }
 
-        // 2. Run FL Studio ASIO block(s) BEFORE acquiring WASAPI Render GetBuffer() lock!
-        auto runAsioBlock = [&]() {
-            float* inL = m_asioIn[0][doubleBufIdx].data();
-            float* inR = m_asioIn[1][doubleBufIdx].data();
-            const size_t poppedL = m_captureRingL.Pop(inL, m_bufferSize);
-            const size_t poppedR = m_captureRingR.Pop(inR, m_bufferSize);
+        // 2. Run single 1:1 FL Studio ASIO block BEFORE acquiring WASAPI Render GetBuffer() lock!
+        float* inL = m_asioIn[0][doubleBufIdx].data();
+        float* inR = m_asioIn[1][doubleBufIdx].data();
+        const size_t poppedL = m_captureRingL.Pop(inL, m_bufferSize);
+        const size_t poppedR = m_captureRingR.Pop(inR, m_bufferSize);
 
-            if (poppedL > 0) lastCapL = inL[poppedL - 1];
-            if (poppedR > 0) lastCapR = inR[poppedR - 1];
-            for (size_t i = poppedL; i < m_bufferSize; ++i) {
-                lastCapL *= 0.92f;
-                inL[i] = lastCapL;
-            }
-            for (size_t i = poppedR; i < m_bufferSize; ++i) {
-                lastCapR *= 0.92f;
-                inR[i] = lastCapR;
-            }
-
-            const uint64_t samplePos = m_sampleCounter.load(std::memory_order_relaxed);
-            const auto disp = ProcessAsioHostBlock(
-                m_sharedState, m_inputDsp,
-                inL, inR,
-                m_asioOut[0][doubleBufIdx].data(), m_asioOut[1][doubleBufIdx].data(),
-                m_workOut[0].data(), m_workOut[1].data(),
-                m_bufferSize, m_sampleRate, samplePos, nowNs, doubleBufIdx, m_callbacks, &m_controlRoom);
-
-            if (m_wasapiRenderFrames != m_bufferSize) {
-                m_renderRingL.Push(disp.outL, m_bufferSize);
-                m_renderRingR.Push(disp.outR, m_bufferSize);
-            }
-
-            m_sampleCounter.fetch_add(m_bufferSize, std::memory_order_release);
-            doubleBufIdx ^= 1u;
-        };
-
-        const float* finalL = nullptr;
-        const float* finalR = nullptr;
-
-        if (m_wasapiRenderFrames == m_bufferSize) {
-            const uint32_t usedIdx = doubleBufIdx;
-            runAsioBlock();
-            const bool hasMon = m_sharedState &&
-                (m_sharedState->directMonitorMix.load(std::memory_order_relaxed) > 0.001f ||
-                 m_sharedState->crossfeedEnabled.load(std::memory_order_relaxed));
-            finalL = hasMon ? m_workOut[0].data() : m_asioOut[0][usedIdx].data();
-            finalR = hasMon ? m_workOut[1].data() : m_asioOut[1][usedIdx].data();
-        } else {
-            runAsioBlock();
-            const uint32_t have = static_cast<uint32_t>(
-                std::min(m_renderRingL.AvailableToRead(), static_cast<size_t>(m_wasapiRenderFrames)));
-            if (have > 0) {
-                m_renderRingL.Pop(m_workOut[0].data(), have);
-                m_renderRingR.Pop(m_workOut[1].data(), have);
-            }
-            for (uint32_t i = have; i < m_wasapiRenderFrames; ++i) {
-                const uint32_t src = (have == 0) ? 0u : (have - 1u);
-                m_workOut[0][i] = (have == 0) ? 0.0f : m_workOut[0][src];
-                m_workOut[1][i] = (have == 0) ? 0.0f : m_workOut[1][src];
-            }
-            finalL = m_workOut[0].data();
-            finalR = m_workOut[1].data();
+        if (poppedL > 0) lastCapL = inL[poppedL - 1];
+        if (poppedR > 0) lastCapR = inR[poppedR - 1];
+        for (size_t i = poppedL; i < m_bufferSize; ++i) {
+            lastCapL *= 0.92f;
+            inL[i] = lastCapL;
         }
+        for (size_t i = poppedR; i < m_bufferSize; ++i) {
+            lastCapR *= 0.92f;
+            inR[i] = lastCapR;
+        }
+
+        const uint64_t samplePos = m_sampleCounter.load(std::memory_order_relaxed);
+        const auto disp = ProcessAsioHostBlock(
+            m_sharedState, m_inputDsp,
+            inL, inR,
+            m_asioOut[0][doubleBufIdx].data(), m_asioOut[1][doubleBufIdx].data(),
+            m_workOut[0].data(), m_workOut[1].data(),
+            m_bufferSize, m_sampleRate, samplePos, nowNs, doubleBufIdx, m_callbacks,
+            &m_controlRoom, &m_auditionCtx);
+
+        m_sampleCounter.fetch_add(m_bufferSize, std::memory_order_release);
+        doubleBufIdx ^= 1u;
+
+        const float* finalL = disp.outL;
+        const float* finalR = disp.outR;
 
         // 3. Acquire WASAPI Render buffer ONLY for the fast convert (< 10 us!)
         BYTE* renderData = nullptr;
@@ -616,7 +589,6 @@ void WasapiExclusiveStream::SyncHardwareControls() {
     const float db = std::clamp(m_sharedState->hardwareDacGainDb.load(std::memory_order_relaxed), -63.5f, 0.0f);
     const float scalar = std::pow(10.0f, db / 20.0f);
     vol->SetMasterVolumeLevelScalar(std::clamp(scalar, 0.0f, 1.0f), nullptr);
-    vol->SetMute(m_sharedState->inputMute.load(std::memory_order_relaxed) ? TRUE : FALSE, nullptr);
     vol->Release();
 }
 

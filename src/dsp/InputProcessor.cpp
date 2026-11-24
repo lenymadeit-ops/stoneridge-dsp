@@ -239,13 +239,15 @@ void InputProcessor::Prepare(double sampleRate, uint32_t /*maxChannels*/) noexce
         b.lastParam = -999.0f;
     }
     m_loudnessMatcher.Prepare(m_sampleRate);
-    m_molecular.Prepare(m_sampleRate);
-    m_beauty.Prepare(m_sampleRate);
-    m_micLocker.Prepare(m_sampleRate);
-    m_preampStage.Prepare(m_sampleRate);
-    m_fet1176.Prepare(m_sampleRate);
-    m_optoLa2a.Prepare(m_sampleRate);
-    m_consoleEq.Prepare(m_sampleRate);
+    m_analogRack.Prepare(m_sampleRate, false);
+    for (uint32_t ch = 0; ch < 2u; ++ch) {
+        m_molecular[ch].Prepare(m_sampleRate);
+        m_beauty[ch].Prepare(m_sampleRate);
+    }
+    m_rawScratch.assign(2048u, 0.0f);
+    m_rawScratchR.assign(2048u, 0.0f);
+    m_monAuditionScratch.assign(2048u, 0.0f);
+    m_monAuditionScratchR.assign(2048u, 0.0f);
 
     Reset();
 }
@@ -284,13 +286,17 @@ void InputProcessor::Reset() noexcept {
     for (auto& b : m_calibBiquads) b.Reset();
     m_clipper.Reset();
     m_loudnessMatcher.Reset();
-    m_molecular.Reset();
-    m_beauty.Reset();
-    m_micLocker.Reset();
-    m_preampStage.Reset();
-    m_fet1176.Reset();
-    m_optoLa2a.Reset();
-    m_consoleEq.Reset();
+    m_analogRack.Reset();
+    for (uint32_t ch = 0; ch < 2u; ++ch) {
+        m_molecular[ch].Reset();
+        m_beauty[ch].Reset();
+    }
+    m_molDriveEnv = 0.0f;
+    m_molMix      = 0.0f;
+    std::fill(m_rawScratch.begin(), m_rawScratch.end(), 0.0f);
+    std::fill(m_rawScratchR.begin(), m_rawScratchR.end(), 0.0f);
+    std::fill(m_monAuditionScratch.begin(), m_monAuditionScratch.end(), 0.0f);
+    std::fill(m_monAuditionScratchR.begin(), m_monAuditionScratchR.end(), 0.0f);
 }
 
 void InputProcessor::StartLearnRoomNoise() noexcept {
@@ -533,6 +539,7 @@ void InputProcessor::ProcessStereo(float* left, float* right, uint32_t numFrames
             const float rawBackupL = l;
             const float rawBackupR = r;
             m_rawScratch[i] = rawBackupL;
+            m_rawScratchR[i] = rawBackupR;
 
             // 1. Optional Room-Noise / Preamp Auto-Level Calibration Samplers
             if (m_learnActive) {
@@ -600,16 +607,11 @@ void InputProcessor::ProcessStereo(float* left, float* right, uint32_t numFrames
             r = runCh1 ? (r * m_gainSmoothed) : l;
             if (cR && dualSafe) {
                 cR[i] = rawBackupR;
+            } else if (cR && preDynStem) {
+                cR[i] = l;
             }
             cL[i] = l;
-            if (runCh1 && cR) cR[i] = r;
-        }
-
-        // 5.2 Flagship Microphone Locker + 1/r Spherical Proximity -> 5.5 Ferromagnetic Preamp Stage
-        m_micLocker.ProcessBlock(cL, chunk, params.micModel, params.virtualDistanceCm);
-        m_preampStage.ProcessBlock(cL, chunk, params.preampModel, params.preampDriveDb, params.transformerIronAmount);
-        if (cR && preDynStem) {
-            std::memcpy(cR, cL, chunk * sizeof(float));
+            if (runCh1 && cR && !dualSafe && !preDynStem) cR[i] = r;
         }
 
         // 6. Broadcast Noise Gate & 7. Zero-Latency Dynamic De-Esser
@@ -655,7 +657,9 @@ void InputProcessor::ProcessStereo(float* left, float* right, uint32_t numFrames
                 }
 
                 if (deEssOn) {
-                    const float sib = std::fabs(m_deEssBp.Process(l, 0));
+                    const float sibL = std::fabs(m_deEssBp.Process(l, 0));
+                    const float sibR = (runCh1 && cR) ? std::fabs(m_deEssBp.Process(r, 1)) : sibL;
+                    const float sib = std::max(sibL, sibR);
                     m_deEssEnv += (sib - m_deEssEnv) * (sib > m_deEssEnv ? m_envAtkFast : m_envRelFast);
                     const float thresh = 0.08f - 0.055f * std::clamp(params.deEsserAmount, 0.0f, 1.0f);
                     float targetDeEss = 1.0f;
@@ -673,24 +677,39 @@ void InputProcessor::ProcessStereo(float* left, float* right, uint32_t numFrames
             }
         }
 
-        // 8A. Serial 1176-Style Fast Feedback FET Peak Catcher (40-800 us attack)
-        if (fetOn) {
-            minFetGrDb = std::min(minFetGrDb, m_fet1176.ProcessBlock(cL, chunk, params.fetPeakCatchAmount, params.fetRatioMode));
-        } else {
-            m_fet1176.ProcessBlock(cL, chunk, 0.0f, params.fetRatioMode);
-        }
+        // 8. Unified Rate-Adaptive Analog Domain (~192 kHz): MicLocker -> Preamp -> 1176 -> LA-2A -> Console EQ
+        vocal::AnalogRackParams rackParams{};
+        rackParams.micModel              = params.micModel;
+        rackParams.virtualDistanceCm     = params.virtualDistanceCm;
+        rackParams.preampModel           = params.preampModel;
+        rackParams.preampDriveDb         = params.preampDriveDb;
+        rackParams.transformerIronAmount = params.transformerIronAmount;
+        rackParams.fetPeakCatchAmount    = params.fetPeakCatchAmount;
+        rackParams.fetRatioMode          = params.fetRatioMode;
+        rackParams.vocalLevelerAmount    = params.vocalLevelerAmount;
+        rackParams.consoleEqModel        = params.consoleEqModel;
+        rackParams.consoleLowDb          = params.consoleLowDb;
+        rackParams.consoleMidDb          = params.consoleMidDb;
+        rackParams.consoleAirDb          = params.consoleAirDb;
+        rackParams.wdfEqEnabled          = params.wdfEqEnabled;
+        rackParams.ecoMode               = params.ecoMode;
 
-        // 8B. Serial LA-2A T4B Dual-Memory Optical Leveler
-        if (levelerOn) {
-            minLevGrDb = std::min(minLevGrDb, m_optoLa2a.ProcessBlock(cL, chunk, params.vocalLevelerAmount));
-        } else {
-            m_optoLa2a.ProcessBlock(cL, chunk, 0.0f);
-        }
+        vocal::AnalogRackTelemetry rackTel{};
+        float* dynR = (runCh1 && cR) ? cR : nullptr;
+        float* preDynOut = (cR && preDynStem && !gateOn && !deEssOn) ? cR : nullptr;
+        m_analogRack.ProcessStereoBlock(cL, dynR, chunk, rackParams, rackTel, preDynOut);
+        if (fetOn) minFetGrDb = std::min(minFetGrDb, rackTel.fetGrDb);
+        if (levelerOn) minLevGrDb = std::min(minLevGrDb, rackTel.optoGrDb);
 
-        // 8C. Circuit-Derived Console EQ (Pultec EQP-1A / Neve 1073 / SSL 4000G / API 550A)
-        m_consoleEq.ProcessBlock(cL, chunk, params.consoleEqModel, params.consoleLowDb, params.consoleMidDb, params.consoleAirDb, params.wdfEqEnabled);
+        // 9. ADAA1/ADAA2 Soft-Clipper + Beauty + 10. K-Weighted A/B Loudness Matcher + Metering
+        vocal::BeautyParams bp{};
+        bp.beautyAmount = params.beautyAmount;
+        bp.contourAmt = params.contourAmt;
+        bp.harmonicSculptAmt = params.harmonicSculptAmt;
+        bp.deHarshAmt = params.deHarshAmt;
+        bp.parallelGlueAmt = params.parallelGlueAmt;
+        bp.shortTermLufs = m_loudnessMatcher.GetShortTermLufs();
 
-        // 9. ADAA1 Soft-Clipper + 10. K-Weighted A/B Loudness Matcher + Metering
         for (uint32_t i = 0; i < chunk; ++i) {
             float l = cL[i];
             float r = (runCh1 && cR) ? cR[i] : l;
@@ -698,28 +717,46 @@ void InputProcessor::ProcessStereo(float* left, float* right, uint32_t numFrames
                 l = m_clipper.Process(l, 0);
                 if (runCh1) r = m_clipper.Process(r, 1);
                 if (params.molecularClip) {
-                    l = m_molecular.Process(l);
-                    if (runCh1) r = m_molecular.Process(r);
+                    const float envDet = runCh1 ? std::max(std::fabs(l), std::fabs(r)) : std::fabs(l);
+                    m_molDriveEnv += (envDet - m_molDriveEnv) * ((envDet > m_molDriveEnv) ? m_envAtkFast : m_envRelFast);
+                    const float targetMix = (params.preampDriveDb > 0.5f)
+                        ? 1.0f
+                        : std::clamp((m_molDriveEnv - 0.40f) / 0.20f, 0.0f, 1.0f);
+                    m_molMix += (targetMix - m_molMix) * m_envAtkFast;
+                    if (m_molMix > 0.001f) {
+                        const float ml = m_molecular[0].Process(l);
+                        l = l + (ml - l) * m_molMix;
+                        if (runCh1) {
+                            const float mr = m_molecular[1].Process(r);
+                            r = r + (mr - r) * m_molMix;
+                        }
+                    } else {
+                        m_molecular[0].TrackIdle(l);
+                        if (runCh1) m_molecular[1].TrackIdle(r);
+                    }
+                } else {
+                    m_molecular[0].TrackIdle(l);
+                    if (runCh1) m_molecular[1].TrackIdle(r);
                 }
+            } else {
+                m_molecular[0].TrackIdle(l);
+                if (runCh1) m_molecular[1].TrackIdle(r);
             }
-            if (params.beautyAmount > 0.001f) {
-                vocal::BeautyParams bp;
-                bp.beautyAmount = params.beautyAmount;
-                bp.contourAmt = params.contourAmt;
-                bp.harmonicSculptAmt = params.harmonicSculptAmt;
-                bp.deHarshAmt = params.deHarshAmt;
-                bp.parallelGlueAmt = params.parallelGlueAmt;
-                bp.shortTermLufs = -18.0f;
-                l = m_beauty.Process(l, bp);
-                if (runCh1) r = m_beauty.Process(r, bp);
-            }
+            l = m_beauty[0].Process(l, bp);
+            if (runCh1) r = m_beauty[1].Process(r, bp);
 
             const float rawB = m_rawScratch[i];
+            const float rawBR = runCh1 ? m_rawScratchR[i] : rawB;
             m_loudnessMatcher.SetGateOpen(m_gateOpen);
             m_loudnessMatcher.SetFreeze(params.freezeAbxGain);
             const float abGain = m_loudnessMatcher.ProcessSample(rawB, l);
+            const float monRawL = std::clamp(rawB * abGain, -1.0f, 1.0f);
+            const float monRawR = runCh1 ? std::clamp(rawBR * abGain, -1.0f, 1.0f) : monRawL;
+            m_monAuditionScratch[i] = monRawL;
+            m_monAuditionScratchR[i] = monRawR;
+
             const bool replaceRecord = abBypass && !params.abAuditionMonitorOnly;
-            float outL = replaceRecord ? std::clamp(rawB * abGain, -1.0f, 1.0f) : l;
+            float outL = replaceRecord ? monRawL : l;
             const float blocked = outL - m_outDcX[0] + m_dcCoeff * m_outDcY[0];
             m_outDcX[0] = outL;
             m_outDcY[0] = blocked;
@@ -727,8 +764,8 @@ void InputProcessor::ProcessStereo(float* left, float* right, uint32_t numFrames
 
             cL[i] = outL;
             if (cR && !dualSafe && !preDynStem) {
-                float outR = runCh1 ? (replaceRecord ? std::clamp(rawB * abGain, -1.0f, 1.0f) : r) : outL;
-                if (runCh1 && !replaceRecord) {
+                float outR = runCh1 ? (replaceRecord ? monRawR : r) : outL;
+                if (runCh1) {
                     const float blockedR = outR - m_outDcX[1] + m_dcCoeff * m_outDcY[1];
                     m_outDcX[1] = outR;
                     m_outDcY[1] = blockedR;

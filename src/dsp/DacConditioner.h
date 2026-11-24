@@ -72,11 +72,11 @@ public:
             const float rawTp = std::max(PushChannelTruePeak(0, xL), PushChannelTruePeak(1, xR));
             maxTpLin = std::max(maxTpLin, rawTp);
 
-            const float dL = TakeAligned(0, xL);
-            const float dR = TakeAligned(1, xR);
-            float yL = dL;
-            float yR = dR;
+            float yL = xL;
+            float yR = xR;
             if (ispGuardEnabled) {
+                const float dL = TakeAligned(0, xL);
+                const float dR = TakeAligned(1, xR);
                 const float target = (rawTp > kIspCeiling) ? (kIspCeiling / rawTp) : 1.0f;
                 if (target < m_ispGain) {
                     m_ispGain    = target;
@@ -118,15 +118,12 @@ public:
         }
 
         // Fast bit-exact raw bypass when both conditioning features are disabled
+        // (avoids running the 48-tap FIR inside the hardware buffer lock window).
         if (!ispGuardEnabled && !ditherShaperEnabled) {
-            float maxTpLin = 0.0f;
-            for (uint32_t i = 0; i < frames; ++i) {
-                const float xL = SafeClampUnclipped(inL[i]);
-                const float xR = inR ? SafeClampUnclipped(inR[i]) : xL;
-                maxTpLin = std::max(maxTpLin, std::max(PushChannelTruePeak(0, xL), PushChannelTruePeak(1, xR)));
-            }
+            const float rawPeak = ComputeStereoPeakAvx2(inL, inR ? inR : inL, frames);
+            const float maxSampleLin = IsNonFiniteFloat(rawPeak) ? 0.0f : rawPeak;
             ConvertFloatToPcm(inL, inR ? inR : inL, dst, frames, channels, bitsPerSample, isFloat);
-            outTel.outputTruePeakDb = 20.0f * std::log10(std::max(maxTpLin, 1e-5f));
+            outTel.outputTruePeakDb = 20.0f * std::log10(std::max(maxSampleLin, 1e-5f));
             outTel.ispReductionDb   = 0.0f;
             return;
         }
@@ -143,13 +140,12 @@ public:
             const float xL = SafeClampUnclipped(inL[i]);
             const float xR = inR ? SafeClampUnclipped(inR[i]) : xL;
 
-            const float rawTp = std::max(PushChannelTruePeak(0, xL), PushChannelTruePeak(1, xR));
-
-            const float dL = TakeAligned(0, xL);
-            const float dR = TakeAligned(1, xR);
-            float yL = dL;
-            float yR = dR;
+            float yL = xL;
+            float yR = xR;
             if (ispGuardEnabled) {
+                const float rawTp = std::max(PushChannelTruePeak(0, xL), PushChannelTruePeak(1, xR));
+                const float dL = TakeAligned(0, xL);
+                const float dR = TakeAligned(1, xR);
                 const float target = (rawTp > kIspCeiling) ? (kIspCeiling / rawTp) : 1.0f;
                 if (target < m_ispGain) {
                     m_ispGain    = target;
@@ -164,7 +160,7 @@ public:
                 minGain = std::min(minGain, m_ispGain);
                 maxTpLin = std::max(maxTpLin, std::min(rawTp * m_ispGain, kIspCeiling));
             } else {
-                maxTpLin = std::max(maxTpLin, rawTp);
+                maxTpLin = std::max(maxTpLin, std::max(std::fabs(xL), std::fabs(xR)));
             }
 
             if (useNoiseShaper16) {
@@ -290,7 +286,8 @@ private:
         const float y1 = std::fabs(dot12(kP1));
         const float y2 = std::fabs(dot12(kP2));
         const float y3 = std::fabs(dot12(kP3));
-        return std::max({ std::fabs(s), y0, y1, y2, y3 });
+        const float alignedCenter = std::fabs(m_tpHist[ch][idx + 5]);
+        return std::max({ alignedCenter, y0, y1, y2, y3 });
     }
 
     // XorShift64* triangular PDF dither in [-1.0, +1.0] LSB
