@@ -1,0 +1,3 @@
+#!/bin/sh
+# Stoneridge DSP fast pre-commit guard (runs staged-file hygiene checks in <2s)
+exec powershell.exe -NoProfile -ExecutionPolicy Bypass -File "scripts/check_hygiene.ps1" -Staged

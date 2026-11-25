@@ -73,9 +73,21 @@ void StressCallback(long doubleBufIdx, ASIOBool) {
 TEST_CASE("Live EM-91CU+ WDM-KS Heavy-Load Stress Suite (64/128/256 @ 44.1/48/96kHz)", "[.stress]") {
     CoInitializeEx(nullptr, COINIT_MULTITHREADED);
 
-    // Spawn 2 background CPU contention threads to simulate heavy Windows/DAW UI load
+    // Spawn 2 background CPU contention threads to simulate heavy Windows/DAW UI load.
+    // RAII join guard prevents std::terminate() if any REQUIRE() fails early.
     std::atomic<bool> stopNoise{false};
     std::vector<std::thread> noiseThreads;
+    struct ThreadJoinGuard {
+        std::atomic<bool>& stop;
+        std::vector<std::thread>& threads;
+        ~ThreadJoinGuard() {
+            stop.store(true, std::memory_order_relaxed);
+            for (auto& th : threads) {
+                if (th.joinable()) th.join();
+            }
+            CoUninitialize();
+        }
+    } guard{stopNoise, noiseThreads};
     for (int t = 0; t < 2; ++t) {
         noiseThreads.emplace_back([&stopNoise]() {
             volatile double x = 1.0;
@@ -159,8 +171,4 @@ TEST_CASE("Live EM-91CU+ WDM-KS Heavy-Load Stress Suite (64/128/256 @ 44.1/48/96
         stream.DisposeBuffers();
         stream.ShutdownDevices();
     }
-
-    stopNoise.store(true, std::memory_order_relaxed);
-    for (auto& th : noiseThreads) th.join();
-    CoUninitialize();
 }

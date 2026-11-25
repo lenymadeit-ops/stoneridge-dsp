@@ -9,11 +9,11 @@
 - **Format Conversion Scaling**: Match `ConvertFloatToPcm` and `ConvertPcmToFloat` scale factors (`32768.0f` / `8388608.0f` with saturation clamping) so 16-bit SQNR stays `> 92 dB` and 24-bit SQNR stays `> 138 dB`, with `NaN`/`Inf` sanitized.
 
 ## Mandatory Pre-Ship Verification Gate
-Before claiming any audio driver change is complete:
-1. Build with zero warnings (`/W4 /analyze /WX` via `analyze-x64`) and run the **AddressSanitizer (`asan-x64`)** test suite (`ctest`).
-2. Run **Format SQNR**, **FFT Spectral Purity (THD+N/IMD)**, **2,000-block Continuity/Click**, and **Chaos IPC Fuzzing** tests with `RealtimeAllocGuard` active.
-3. Verify the actual compiled `StoneridgeASIO_x64.dll` via `AsioConformanceHost.exe` (COM `CoCreateInstance`) and `dumpbin /EXPORTS /DEPENDENTS`.
-4. When FL Studio is closed, run the live Mackie EM-91CU+ heavy-load stress suite (`[.stress]`) and confirm **0 XRuns, 0 capture trims, and 0 underruns**, plus the head-to-head shootout (`ShootoutBench.exe`) against ASIO4ALL v2.
+Use the canonical tiered QA harness instead of ad-hoc shell commands:
+- **During iteration**: `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run_full_qa.ps1 -Mode Fast` (runs `check_hygiene.ps1 -All`, Release `--parallel 2` build, full `CTest`, and dual VST3 SHA-256 hash parity).
+- **Before every commit**: `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run_full_qa.ps1 -Mode Full` (adds `dumpbin` COM audit, `/W4 /analyze /WX` zero-warning check across all Stoneridge targets, AddressSanitizer `StoneridgeTests` + `StoneridgeVocalChainRt`, properly quoted `pluginval --strictness-level 5` on BOTH VST3 installs, and `clap-validator`).
+- **Before tagging / shipping**: With `FL64.exe` and `StoneridgePanel.exe` closed and the Mackie EM-91CU+ connected, run `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run_full_qa.ps1 -Mode Ship` (adds `AsioConformanceHost.exe`, live 6-config `[.stress]` confirming **0 XRuns and 0 capture trims**, `ShootoutBench.exe`, and structured `build\qa_report.json`).
+- **Automated Local Guards**: Run `scripts\setup_dev_guards.ps1` once per clone to activate `scripts/git-hooks/pre-commit` alongside `.agents/hooks.json`.
 
 ## Stoneridge VST / WebView2 UI & Full-Toolchain Rules (`stoneridge-dom`, `stoneridge-vibreit`, & Future Plugins)
 - **Full-Toolchain Audit Before Planning**: Always check installed skills (`literature-search-arxiv`, `literature-search-openalex`, `gemini-api-cli`, `generative_ui`, `chrome-devtools`), Marketplace plugins, and native validators (`pluginval`, `clap-validator`, `wpr.exe`, `browser` subagent) before finalizing any engineering or QA plan.

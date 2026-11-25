@@ -1,0 +1,30 @@
+name: Stoneridge DSP Windows CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Static Hygiene Gate
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check_hygiene.ps1 -All
+
+      - name: Configure Release x64 (core, ASIO, panel, tests)
+        shell: pwsh
+        run: cmake -B build -A x64 -DSTONERIDGE_BUILD_PLUGIN=OFF
+
+      - name: Build Release x64
+        shell: pwsh
+        run: cmake --build build --config Release --parallel 2
+
+      - name: Run Unit, DSP, Spectral, IPC & Acoustic Audit Tests
+        shell: pwsh
+        run: .\build\Release\StoneridgeTests.exe "~[benchmark]" "~[.stress]"

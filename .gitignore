@@ -3,6 +3,8 @@ build/
 build-*/
 cmake-build-*/
 .ci-tools/
+.cursor/
+.agents/.state/
 .vs/
 *.obj
 *.exp

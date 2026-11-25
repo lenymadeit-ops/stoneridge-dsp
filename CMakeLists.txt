@@ -208,6 +208,8 @@ target_link_libraries(ShootoutBench PRIVATE ole32 user32)
 include(CTest)
 include(Catch)
 catch_discover_tests(StoneridgeTests)
+add_test(NAME RepoHygiene
+    COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File "${CMAKE_SOURCE_DIR}/scripts/check_hygiene.ps1" -All)
 
 set(STONERIDGE_SONORE_SDK "C:/Users/dell/Documents/stoneridge-dom/build/_deps/sonore_sdk_repo-src/sdk" CACHE PATH "Local Sonore SDK")
 option(STONERIDGE_BUILD_PLUGIN "Build the Stoneridge Vocal Chain plugin" ON)
@@ -227,8 +229,10 @@ if(STONERIDGE_BUILD_PLUGIN AND EXISTS "${STONERIDGE_SONORE_SDK}/CMakeLists.txt")
             ${CMAKE_CURRENT_SOURCE_DIR}/src
             ${CMAKE_CURRENT_SOURCE_DIR})
         target_link_libraries(StoneridgeVocalChain_objects PRIVATE StoneridgeCore)
-        add_custom_command(TARGET StoneridgeVocalChain_vst3 POST_BUILD
-            COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File "${CMAKE_SOURCE_DIR}/scripts/install_vst3.ps1" -Configuration $<CONFIG>)
+        if(NOT STONERIDGE_ENABLE_ANALYZE AND NOT STONERIDGE_ENABLE_ASAN)
+            add_custom_command(TARGET StoneridgeVocalChain_vst3 POST_BUILD
+                COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File "${CMAKE_SOURCE_DIR}/scripts/install_vst3.ps1" -Configuration $<CONFIG>)
+        endif()
     endif()
     sonore_add_standalone(StoneridgeVocalChainStandalone
         SOURCES plugin/VocalChainPlugin.cpp
